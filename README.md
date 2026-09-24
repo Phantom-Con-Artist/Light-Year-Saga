@@ -73,7 +73,9 @@ The planning documents are `space_explorer_project_plan.md` and `space_explorer_
 ## Real vs. illustrated
 
 - **Real:** positions, distances, sizes, masses, temperatures, orbital periods, galaxy orientations, the 2MRS and HYG catalogues, and redshift distances (Planck 2018 cosmology).
-- **Illustrated:** surface textures of planets and stars, the appearance of nebulae and galaxies (generated from their type), and the Milky Way's structure beyond ~3,000 ly (a model built from published structure). Exoplanet orbital *phases* are illustrative; their periods and sizes are real. The UI labels every illustrated item.
+- **Photographed:** all 10 nebulae and 14 galaxies are shown as real telescope photographs (Hubble, Webb, ESO, NOIRLab). Each one is placed from the release's own astrometry (centre, field of view, north angle), so it has its true position, size and orientation as seen from Earth, and you arrive looking from Earth's direction. From other angles, galaxies cross-fade to an illustrated 3D disk. Solar System planets and the Sun use Solar System Scope maps built from NASA data. Earth adds city lights, clouds and ocean glint.
+- **Simulated:** black holes lens the real star map, bending rays by ≈2 Rs/b and steepening them near the photon sphere. Accretion disks are ray-traced through the same bent light path, so the far side of the disk arcs over the shadow and one side is brighter from Doppler beaming.
+- **Illustrated:** exoplanet and other stars' surfaces (the Sun's granulation recoloured to each star's temperature), the Milky Way's structure beyond ~3,000 ly (a model built from published structure), and galaxies without a photo. Exoplanet orbital *phases* are illustrative; their periods and sizes are real. The UI labels every illustrated item.
 
 ## Performance
 
@@ -84,6 +86,8 @@ Designed for integrated graphics. Surfaces and galaxy/nebula textures are baked 
 | Data | Source | Licence |
 |---|---|---|
 | Star map / diffuse Milky Way | NASA/GSFC SVS Deep Star Maps 2020 | Public domain (credit NASA) |
+| Nebula and galaxy photos | ESA/Hubble, ESA/Webb, ESO, NOIRLab (full credits: `apps/web/public/textures/LICENSE.md`) | CC BY 4.0 |
+| Planet and Sun maps | Solar System Scope, from NASA data | CC BY 4.0 |
 | Stars | HYG Database v4.1 | CC BY-SA 4.0 (see `apps/web/public/data/LICENSE.md`) |
 | Galaxies | 2MASS Redshift Survey (Huchra et al. 2012) via VizieR | Free for research/education |
 | Exoplanets | NASA Exoplanet Archive | Public |

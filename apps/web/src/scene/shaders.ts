@@ -126,6 +126,10 @@ uniform float uHasAtmo;
 uniform float uHighlight;
 uniform vec3 uLightPos;
 uniform vec3 uEmissive;
+uniform sampler2D uNight;
+uniform float uNightGain;
+uniform sampler2D uOcean;
+uniform float uOceanGain;
 ${SURFACE_VARYINGS}
 
 void main() {
@@ -144,7 +148,15 @@ void main() {
   // Self-glow on the night side: lava oceans, white-hot gas giants.
   vec3 glow = uEmissive * (1.0 - light) * (0.35 + 0.65 * (1.0 - dot(col, vec3(0.333))));
 
-  gl_FragColor = vec4(lit + atmo + hl + glow, 1.0);
+  // Earth: city lights on the night side, sun glint on the oceans.
+  vec3 city = uNightGain > 0.0 ? texture2D(uNight, vUv).rgb * uNightGain * (1.0 - smoothstep(-0.2, 0.08, ndl)) : vec3(0.0);
+  float glint = 0.0;
+  if (uOceanGain > 0.0) {
+    float water = texture2D(uOcean, vUv).r;
+    glint = pow(max(dot(N, normalize(L + V)), 0.0), 70.0) * water * light * uOceanGain;
+  }
+
+  gl_FragColor = vec4(lit + atmo + hl + glow + city + vec3(1.0, 0.93, 0.8) * glint, 1.0);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }
@@ -153,10 +165,16 @@ void main() {
 export const sunFragment = /* glsl */ `
 uniform sampler2D uMap;
 uniform float uBoost;
+uniform vec3 uTint;
+uniform float uTintMix;
 ${SURFACE_VARYINGS}
 
 void main() {
   vec3 col = texture2D(uMap, vUv).rgb;
+  // Keep the photographed granulation but recolour it to the star's temperature.
+  float lum = dot(col, vec3(0.3, 0.55, 0.15));
+  vec3 tint = pow(uTint, vec3(1.5));   // richer colour; the limb term adds the brightness range
+  col = mix(col, tint * pow(lum * 1.5, 1.3), uTintMix);
   vec3 N = normalize(vWorldNormal);
   vec3 V = normalize(cameraPosition - vWorldPos);
   float limb = 0.6 + 0.4 * sqrt(max(dot(N, V), 0.0));
@@ -221,6 +239,8 @@ uniform float uInner;
 uniform float uOuter;
 uniform vec3 uPlanetCenter;
 uniform float uPlanetRadius;
+uniform sampler2D uRingMap;
+uniform float uHasRingMap;
 varying vec2 vLocal;
 varying vec3 vWorldPos;
 
@@ -244,6 +264,11 @@ void main() {
   float shadow = (b < 0.0 && b * b - c > 0.0) ? 0.12 : 1.0;
 
   vec3 col = uColor * (0.35 + 0.65 * bands) * shadow;
+  if (uHasRingMap > 0.5) {
+    vec4 ringTex = texture2D(uRingMap, vec2(clamp(t, 0.0, 1.0), 0.5));
+    col = ringTex.rgb * shadow;
+    alpha = ringTex.a;
+  }
   gl_FragColor = vec4(col, alpha);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
@@ -296,6 +321,24 @@ void main() {
   // uBlur > 1 samples a softer mip level (hides residual noise in diffuse maps).
   vec3 col = max(textureGrad(uMap, uv, dx * uBlur, dy * uBlur).rgb - uBlack, 0.0) * uBrightness;
   gl_FragColor = vec4(col, 1.0);
+  #include <colorspace_fragment>
+}
+`;
+
+/* ---------- Cloud layer (Earth) ---------- */
+
+export const cloudFragment = /* glsl */ `
+uniform sampler2D uMap;
+uniform vec3 uLightPos;
+${SURFACE_VARYINGS}
+
+void main() {
+  float cover = texture2D(uMap, vUv).r;
+  vec3 N = normalize(vWorldNormal);
+  vec3 L = normalize(uLightPos - vWorldPos);
+  float light = smoothstep(-0.1, 0.6, dot(N, L));
+  gl_FragColor = vec4(vec3(1.0) * (0.02 + 1.15 * light), cover * 0.9);
+  #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }
 `;

@@ -237,13 +237,26 @@ function CatalogInspector({ obj }: { obj: CatalogObject }) {
       <Section title="About">
         <p className="text-[14px] leading-relaxed text-ink-dim">{obj.description}</p>
         {obj.visualNote && <p className="mt-2.5 text-[12px] leading-relaxed text-ink-faint">{obj.visualNote}</p>}
-        {(obj.kind === "galaxy" || obj.kind === "nebula") && !obj.visualNote && (
+        {obj.photo && (
+          <p className="mt-2.5 text-[12px] leading-relaxed text-ink-faint">
+            {obj.kind === "nebula"
+              ? "A real photograph, placed at its true position and size and oriented as seen from Earth."
+              : "Seen from Earth’s direction this is a real photograph at its true position, size and orientation; from other angles an illustrated 3D disk takes over."}
+          </p>
+        )}
+        {(obj.kind === "galaxy" || obj.kind === "nebula") && !obj.visualNote && !obj.photo && (
           <p className="mt-2.5 text-[12px] leading-relaxed text-ink-faint">
             Position, size and orientation are real; its appearance is an illustration based on its type.
           </p>
         )}
       </Section>
-      <Sources sources={obj.sources} />
+      {obj.photo && (
+        <Section title="Photograph">
+          <p className="text-[13px] text-ink-dim">{obj.photo.telescope}</p>
+          <p className="mt-1 text-[12px] leading-relaxed text-ink-faint">Credit: {obj.photo.credit} · CC BY 4.0</p>
+        </Section>
+      )}
+      <Sources sources={obj.photo ? [...obj.sources, obj.photo.release] : obj.sources} />
     </Shell>
   );
 }

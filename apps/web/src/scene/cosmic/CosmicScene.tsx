@@ -27,6 +27,7 @@ import { smoothstep } from "../interstellar/visibility";
 import { FlightRig, type RigTarget } from "../common/FlightRig";
 import { CatalogLayer } from "../common/CatalogLayer";
 import { GalaxyDisks, radialGlowTexture } from "../common/GalaxyDisks";
+import { SkyPhotos } from "../common/SkyPhotos";
 import { useScreenPicking } from "../common/picking";
 import { ScreenLabel } from "../ScreenLabel";
 
@@ -235,6 +236,16 @@ function Shell({ obj, color, opacity, inside = false }: { obj: CatalogObject; co
     mesh.geometry.dispose();
     (mesh.material as ShaderMaterial).dispose();
   }, [mesh]);
+  // Zoomed in on a single galaxy, a structure hundreds of Mly across would only
+  // paint over it — hide it until the view is wide enough to take it in.
+  const controls = useThree((s) => s.controls) as unknown as { target: Vector3 } | null;
+  const camera = useThree((s) => s.camera);
+  useFrame(() => {
+    const zoom = controls ? camera.position.distanceTo(controls.target) : Infinity;
+    const k = inside ? 1 : smoothstep(obj.extent * 0.02, obj.extent * 0.2, zoom);
+    (mesh.material as ShaderMaterial).uniforms.uOpacity.value = opacity * k;
+    mesh.visible = k > 0.001;
+  });
   return <primitive object={mesh} />;
 }
 
@@ -334,6 +345,7 @@ export function CosmicScene() {
       <MilkyWayDisk />
       <SurveyGalaxies />
       <GalaxyDisks objects={GALAXIES} unitScale={1} />
+      <SkyPhotos objects={GALAXIES} mode="sky" />
       <Structures />
       <CatalogLayer objects={OBJECTS} labelRange={labelRange} markerKinds={MARKER_KINDS} />
       <Picking />

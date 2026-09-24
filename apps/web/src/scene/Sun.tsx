@@ -1,4 +1,4 @@
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { Billboard } from "@react-three/drei";
 import { AdditiveBlending, Color, ShaderMaterial, type Mesh } from "three";
@@ -8,6 +8,7 @@ import { getRenderRadius } from "./renderRegistry";
 import { coronaFragment, coronaVertex, sunFragment, surfaceVertex } from "./shaders";
 import { getBakedSurface } from "./bake";
 import { BodyLabel } from "./BodyLabel";
+import { BODY_TEXTURES, useRealTexture } from "./realTextures";
 
 export function Sun({ obj }: { obj: SpaceObject }) {
   const gl = useThree((s) => s.gl);
@@ -19,11 +20,25 @@ export function Sun({ obj }: { obj: SpaceObject }) {
       new ShaderMaterial({
         vertexShader: surfaceVertex,
         fragmentShader: sunFragment,
-        uniforms: { uMap: { value: getBakedSurface(gl, obj).texture }, uBoost: { value: 1.6 } },
+        uniforms: {
+          uMap: { value: getBakedSurface(gl, obj).texture },
+          uBoost: { value: 1.6 },
+          uTint: { value: new Color("#fff4e0") },
+          uTintMix: { value: 0 },
+        },
         toneMapped: false,
       }),
     [gl, obj],
   );
+
+  const map = useRealTexture(BODY_TEXTURES.sun.map);
+  useEffect(() => {
+    if (!map) return;
+    surfaceMat.uniforms.uMap.value = map;
+    // The map is strongly orange; pull it toward the Sun's true near-white.
+    surfaceMat.uniforms.uTintMix.value = 0.3;
+    surfaceMat.uniforms.uBoost.value = 1.45;
+  }, [surfaceMat, map]);
 
   const coronaMat = useMemo(
     () =>

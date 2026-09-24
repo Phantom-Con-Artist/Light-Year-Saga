@@ -69,3 +69,25 @@ export function diskBasis(ra: string | number, dec: string | number, paDeg: numb
     normal: equatorialToRender(normal),
   };
 }
+
+/**
+ * Orientation of a photograph on the sky, as seen from Earth. `northDeg` is how
+ * far north is rotated counter-clockwise from image-up. Returns render-space
+ * unit vectors for image right, image up, and the normal facing Earth.
+ */
+export function skyPlaneBasis(ra: string | number, dec: string | number, northDeg: number) {
+  const n = equatorialUnit(parseRA(ra), parseDec(dec));
+  const east = new Vector3().crossVectors(new Vector3(0, 0, 1), n).normalize();
+  const north = new Vector3().crossVectors(n, east).normalize();
+  // A direction at position angle φ (north through east) is north·cosφ + east·sinφ;
+  // image-up sits at φ = −northDeg, image-right 90° further clockwise.
+  const at = (deg: number) => {
+    const a = (deg * Math.PI) / 180;
+    return north.clone().multiplyScalar(Math.cos(a)).addScaledVector(east, Math.sin(a));
+  };
+  return {
+    right: equatorialToRender(at(-northDeg - 90)),
+    up: equatorialToRender(at(-northDeg)),
+    normal: equatorialToRender(n.clone().negate()),
+  };
+}

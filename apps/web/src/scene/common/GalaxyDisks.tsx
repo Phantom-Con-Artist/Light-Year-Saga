@@ -15,6 +15,7 @@ import {
 import { diskBasis } from "../../astronomy/sky";
 import type { CatalogObject, GalaxyVisual } from "../../data/catalog";
 import { bakeGalaxyTexture } from "./galaxyBake";
+import { photoWeight } from "./SkyPhotos";
 
 const diskVertex = /* glsl */ `
 varying vec2 vUv;
@@ -91,13 +92,13 @@ export function GalaxyDisks({ objects, unitScale, gain }: GalaxyDisksProps) {
   const camera = useThree((s) => s.camera);
 
   const items = useMemo(() => {
-    const out: { disk?: Mesh; sprite?: Sprite; material?: ShaderMaterial; spriteMaterial?: SpriteMaterial }[] = [];
+    const out: { id: string; disk?: Mesh; sprite?: Sprite; material?: ShaderMaterial; spriteMaterial?: SpriteMaterial }[] = [];
     for (const o of objects) {
       const visual = o.visual;
       if (visual?.type !== "galaxy") continue;
       const size = o.extent * unitScale;
       const pos = o.position.clone().multiplyScalar(unitScale);
-      const item: (typeof out)[number] = {};
+      const item: (typeof out)[number] = { id: o.id };
 
       if (visual.style !== "elliptical") {
         const material = new ShaderMaterial({
@@ -160,10 +161,12 @@ export function GalaxyDisks({ objects, unitScale, gain }: GalaxyDisksProps) {
   useFrame(() => {
     const g = gain ? gain(camera.position) : 1;
     for (const it of items) {
-      if (it.material) it.material.uniforms.uGain.value = 2.2 * g;
-      if (it.spriteMaterial) it.spriteMaterial.opacity = 0.55 * g;
-      if (it.disk) it.disk.visible = g > 0.001;
-      if (it.sprite) it.sprite.visible = g > 0.001;
+      // Seen from Earth, the real photograph replaces the illustrated disk.
+      const k = g * (1 - photoWeight(it.id));
+      if (it.material) it.material.uniforms.uGain.value = 2.2 * k;
+      if (it.spriteMaterial) it.spriteMaterial.opacity = 0.55 * k;
+      if (it.disk) it.disk.visible = k > 0.001;
+      if (it.sprite) it.sprite.visible = k > 0.001;
     }
   });
 

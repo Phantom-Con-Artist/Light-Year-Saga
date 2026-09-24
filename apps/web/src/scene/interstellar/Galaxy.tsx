@@ -108,6 +108,7 @@ uniform sampler2D uMap;
 uniform float uGain;
 uniform float uLayerWeight;
 uniform float uThick;       // 1 for the mid-plane, 0 for outer layers (bulge-only)
+uniform float uEdgeOn;      // keep a thin edge-on disk only when viewing from outside the galaxy
 varying vec2 vUv;
 varying vec3 vWorldPos;
 varying vec3 vNormalW;
@@ -121,7 +122,7 @@ void main() {
   // across the screen (e.g. when the camera sits inside the disk). Fade them.
   vec3 toCam = cameraPosition - vWorldPos;
   float facing = abs(dot(normalize(toCam), vNormalW));
-  float edge = mix(uThick * 0.2, 1.0, smoothstep(0.03, 0.35, facing));
+  float edge = mix(uThick * 0.2 * uEdgeOn, 1.0, smoothstep(0.03, 0.35, facing));
   float near = smoothstep(1500.0, 7000.0, length(toCam));
   vec3 c = col * uGain * bulgeOnly * edge * near;
   c = c / (1.0 + c * 0.35);   // gentle highlight roll-off so the core never clips to flat white
@@ -146,7 +147,7 @@ void main() {
   // Conserve light below a pixel; keep close-up clouds from reading as snow.
   vAlpha = uOpacity * min(1.0, px * px) * 0.5 / (1.0 + max(px - 2.6, 0.0) * 0.08);
   // Illustrative clouds vanish up close, where they'd read as snow.
-  vAlpha *= smoothstep(1500.0, 9000.0, -mv.z);
+  vAlpha *= smoothstep(6000.0, 24000.0, -mv.z);
   vColor = aColor;
 }
 `;
@@ -194,6 +195,7 @@ export function Galaxy() {
               uGain: { value: 0 },
               uLayerWeight: { value: weight },
               uThick: { value: z === 0 ? 1 : 0 },
+              uEdgeOn: { value: 1 },
             },
             side: DoubleSide,
             transparent: true,
@@ -250,9 +252,15 @@ export function Galaxy() {
     // Auto-exposure: dim the glow as the camera approaches the bright core.
     const dCore = camera.position.distanceTo(GALACTIC_CENTRE);
     const exposure = 0.14 + 0.86 * smoothstep(6_000, 80_000, dCore);
-    for (const m of layerMaterials) m.uniforms.uGain.value = opacity * 2.6 * exposure;
+    const edgeOn = smoothstep(45_000, 90_000, dCore);
+    for (const m of layerMaterials) {
+      m.uniforms.uGain.value = opacity * 2.6 * exposure;
+      m.uniforms.uEdgeOn.value = edgeOn;
+    }
     const su = (sparkle.material as ShaderMaterial).uniforms;
-    su.uOpacity.value = opacity;
+    // Point-cloud star clouds only read well at galactic scale; from inside the
+    // disk the NASA sky map already shows the Milky Way, and these look like snow.
+    su.uOpacity.value = opacity * smoothstep(12_000, 30_000, dSun);
     su.uScale.value = size.height / 900;
   });
 

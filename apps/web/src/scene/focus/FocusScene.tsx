@@ -20,7 +20,7 @@ import { STARMAP_SOURCES, SkyDome } from "../Backdrop";
 import { ScreenLabel } from "../ScreenLabel";
 import { FlightRig, type RigTarget } from "../common/FlightRig";
 import { useScreenPicking } from "../common/picking";
-import { BlackHoleBody, HabitableZone, OrbitRing, PlanetBody, StarSphere, schwarzschildRadiusSolar } from "../common/Bodies";
+import { LENS_SKY_GAIN, BlackHoleBody, HabitableZone, OrbitRing, PlanetBody, StarSphere, schwarzschildRadiusSolar } from "../common/Bodies";
 
 const ORIGIN = new Vector3();
 const DAY_MS = 86_400_000;
@@ -164,6 +164,8 @@ function Picking() {
   return null;
 }
 
+const BLACK_HOLE_VIEW = new Vector3(0.3, -0.06, 1).normalize();
+
 /** True-scale close-up of one star, black hole or planetary system. Units: solar radii. */
 export function FocusScene() {
   const focusId = useViewStore((s) => s.focusId);
@@ -174,7 +176,12 @@ export function FocusScene() {
   const radius = subject ? subjectRadius(subject) : 1;
   const framing = subject?.kind === "system" ? extent * 1.7 : subject?.kind === "black-hole" ? extent * 1.8 : radius * 4.5;
 
-  const home = useMemo<RigTarget>(() => ({ position: () => ORIGIN, distance: framing, minDistance: radius * 1.05 }), [framing, radius]);
+  // Black holes: arrive just above the disk plane, where lensing lifts the far side of the disk over the shadow.
+  const bhView = subject?.kind === "black-hole";
+  const home = useMemo<RigTarget>(
+    () => ({ position: () => ORIGIN, distance: framing, minDistance: radius * 1.05, direction: bhView ? BLACK_HOLE_VIEW : undefined }),
+    [framing, radius, bhView],
+  );
   const resolve = useCallback(
     (id: string): RigTarget | null => {
       if (!subject) return null;
@@ -193,7 +200,7 @@ export function FocusScene() {
 
   return (
     <>
-      <SkyDome sources={STARMAP_SOURCES} gain={0.55} />
+      <SkyDome sources={STARMAP_SOURCES} gain={LENS_SKY_GAIN} />
       <Subject subject={subject} />
       <References radius={radius} extent={subject.kind === "system" ? extent : radius} system={subject.kind === "system"} />
       <Picking />

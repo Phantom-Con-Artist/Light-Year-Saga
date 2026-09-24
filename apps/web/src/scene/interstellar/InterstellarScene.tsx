@@ -9,11 +9,11 @@ import { DIFFUSE_SOURCES, SkyDome } from "../Backdrop";
 import { StarField } from "./StarField";
 import { StarOverlay } from "./StarOverlay";
 import { Galaxy } from "./Galaxy";
-import { Nebulae } from "./Nebulae";
 import { diffuseSkyOpacity, smoothstep } from "./visibility";
 import { FlightRig, type RigTarget } from "../common/FlightRig";
 import { CatalogLayer } from "../common/CatalogLayer";
 import { GalaxyDisks } from "../common/GalaxyDisks";
+import { SkyPhotos } from "../common/SkyPhotos";
 import { useScreenPicking } from "../common/picking";
 
 const ORIGIN = new Vector3();
@@ -103,7 +103,8 @@ export function InterstellarScene() {
       />
       <Galaxy />
       <GalaxyDisks objects={SATELLITES} unitScale={1e6} gain={satelliteGain} />
-      <Nebulae objects={NEBULAE} />
+      <SkyPhotos objects={SATELLITES} unitScale={1e6} mode="sky" gain={satelliteGain} />
+      <SkyPhotos objects={NEBULAE} mode="billboard" />
       {catalog && (
         <>
           <StarField catalog={catalog} />

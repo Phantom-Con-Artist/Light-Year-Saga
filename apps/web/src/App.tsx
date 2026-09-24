@@ -22,6 +22,7 @@ import { installAudioUnlock } from "./audio/audioStore";
 import { useStarStore, starName } from "./data/stars";
 import { getObject } from "./data/solarSystem";
 import { CATALOG_KIND_LABEL, getCatalogObject, getExoPlanet } from "./data/catalog";
+import { TEXTURE_CREDIT } from "./scene/realTextures";
 
 function useKeyboardShortcuts() {
   useEffect(() => {
@@ -120,6 +121,12 @@ function Credits() {
       {level === "cosmic" && (
         <a href="https://doi.org/10.1088/0067-0049/199/2/26" target="_blank" rel="noreferrer" className="hover:text-ink-dim">
           Galaxies: 2MASS Redshift Survey (Huchra et al. 2012)
+        </a>
+      )}
+      {(level === "interstellar" || level === "cosmic") && <span>Photos: ESA/Hubble, ESA/Webb, ESO, NOIRLab (CC BY 4.0) — credits per object</span>}
+      {(level === "system" || level === "focus") && (
+        <a href="https://www.solarsystemscope.com/textures/" target="_blank" rel="noreferrer" className="hover:text-ink-dim">
+          {TEXTURE_CREDIT}
         </a>
       )}
       <span>Music: “Weightless Wonder”</span>

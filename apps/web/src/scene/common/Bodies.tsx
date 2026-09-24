@@ -22,6 +22,8 @@ import type { ExoPlanet } from "../../data/catalog";
 import type { SurfaceStyle } from "../../domain/types";
 import { getBakedCustom } from "../bake";
 import { sunFragment, surfaceFragment, surfaceVertex } from "../shaders";
+import { BODY_TEXTURES, useRealTexture } from "../realTextures";
+import { STARMAP_SOURCES } from "../Backdrop";
 import { radialGlowTexture } from "./GalaxyDisks";
 
 /* ----------------------------------------------------------- units */
@@ -57,10 +59,24 @@ export function StarSphere({ radius, temperatureK, position }: { radius: number;
       vertexShader: surfaceVertex,
       fragmentShader: sunFragment,
       // Cooler stars clip to yellow-white if pushed too hard; keep their colour.
-      uniforms: { uMap: { value: target.texture }, uBoost: { value: temperatureK < 4500 ? 1.0 : 1.25 } },
+      uniforms: {
+        uMap: { value: target.texture },
+        uBoost: { value: temperatureK < 4500 ? 1.0 : 1.25 },
+        uTint: { value: hot },
+        uTintMix: { value: 0 },
+      },
       toneMapped: false,
     });
   }, [gl, key, temperatureK]);
+
+  // Real solar granulation, recoloured to this star's temperature.
+  const sunMap = useRealTexture(BODY_TEXTURES.sun.map);
+  useEffect(() => {
+    if (!sunMap) return;
+    material.uniforms.uMap.value = sunMap;
+    material.uniforms.uTintMix.value = 1;
+    material.uniforms.uBoost.value = temperatureK < 4500 ? 1.1 : 1.25;
+  }, [material, sunMap, temperatureK]);
 
   const corona = useMemo(
     () =>
@@ -161,44 +177,49 @@ export function PlanetBody({ planet, radius, lightPosition, position, spin = 0.2
 
 /* ----------------------------------------------------------- black holes */
 
-const shadowFragment = /* glsl */ `
-uniform float uActive;
-uniform vec3 uRing;
+const lensVertex = /* glsl */ `
 varying vec2 vUv;
-void main() {
-  // Billboard spans ±5 Rs.
-  float r = length(vUv - 0.5) * 10.0;
-  float shadow = step(r, 2.6);
-  float ring = exp(-pow((r - 2.68) / 0.07, 2.0));
-  // Lensed image of the far side of the disk, wrapped around the shadow.
-  float halo = exp(-pow((r - 3.05) / 0.35, 2.0)) * uActive;
-  vec3 col = uRing * (ring * 2.2 + halo * 0.9);
-  float a = max(shadow, clamp(ring * 1.4 + halo * 0.8, 0.0, 1.0));
-  if (a < 0.01) discard;
-  gl_FragColor = vec4(col, a);
-  #include <colorspace_fragment>
-}
-`;
-
-const diskVertex = /* glsl */ `
-varying vec3 vLocal;
 varying vec3 vWorld;
 void main() {
-  vLocal = position;
+  vUv = uv;
   vec4 wp = modelMatrix * vec4(position, 1.0);
   vWorld = wp.xyz;
   gl_Position = projectionMatrix * viewMatrix * wp;
 }
 `;
 
-const diskFragment = /* glsl */ `
-uniform float uInner;
-uniform float uOuter;
-uniform float uTime;
+/**
+ * Gravitational lensing of the real star map. Each pixel's view ray is bent
+ * toward the black hole by roughly 2·Rs/b (steepening near the photon sphere),
+ * then used to look up the NASA sky map — so background stars smear into arcs
+ * and an Einstein ring. Rays with impact parameter below the critical
+ * 3√3/2 Rs fall in: that is the shadow.
+ */
+const lensFragment = /* glsl */ `
+uniform sampler2D uSky;
+uniform float uSkyGain;
+uniform float uHasSky;
 uniform vec3 uCentre;
-uniform vec3 uAxis;
-varying vec3 vLocal;
+uniform float uRs;
+uniform float uActive;
+uniform vec3 uRing;
+uniform vec3 uAxis;       // disk normal (world)
+uniform float uOuter;     // disk outer edge, Rs
+uniform float uTime;
+varying vec2 vUv;
 varying vec3 vWorld;
+
+const float OBLIQUITY = 0.40909280422;
+const float PI = 3.14159265359;
+const float INNER = 3.0;  // innermost stable circular orbit, Rs
+
+vec3 skyColour(vec3 d) {
+  vec3 ecl = vec3(d.x, -d.z, d.y);
+  float ce = cos(OBLIQUITY), se = sin(OBLIQUITY);
+  vec3 eq = vec3(ecl.x, ecl.y * ce - ecl.z * se, ecl.y * se + ecl.z * ce);
+  vec2 uv = vec2(fract(0.5 - atan(eq.y, eq.x) / (2.0 * PI)), 0.5 + asin(clamp(eq.z, -1.0, 1.0)) / PI);
+  return texture2D(uSky, uv).rgb * uSkyGain;
+}
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
 float noise(vec2 x) {
@@ -207,36 +228,73 @@ float noise(vec2 x) {
   return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), f.x), f.y);
 }
 
-void main() {
-  vec2 p = vLocal.xy;
-  float r = length(p);
-  float t = (r - uInner) / (uOuter - uInner);
-  float th = atan(p.y, p.x);
-  // Keplerian shear: inner gas laps the outer gas.
-  float omega = pow(uInner / r, 1.5);
-  float swirl = th + uTime * omega * 1.2 + log(r) * 3.0;
-  // Sample noise on a circle so there is no seam where the angle wraps at ±π.
+// Emission of the disk at point h (Rs units, centred), seen along ray direction rd.
+vec4 disk(vec3 h, vec3 rd) {
+  float r = length(h);
+  if (r < INNER || r > uOuter) return vec4(0.0);
+  vec3 e1 = normalize(abs(uAxis.y) < 0.9 ? cross(uAxis, vec3(0, 1, 0)) : cross(uAxis, vec3(1, 0, 0)));
+  vec3 e2 = cross(uAxis, e1);
+  float th = atan(dot(h, e2), dot(h, e1));
+  // Keplerian shear winds the gas into long streaks; sample on a circle so the angle has no seam.
+  float swirl = th + uTime * pow(INNER / r, 1.5) * 0.9;
   vec2 ring = vec2(cos(swirl), sin(swirl));
-  float rr = r / uInner;
-  float n = noise(ring * 3.0 + vec2(rr * 2.0, 0.0)) * 0.6 + noise(ring * 9.0 + vec2(0.0, rr * 7.0)) * 0.4;
+  float lr = log(r);
+  float n = noise(ring * 2.5 + vec2(lr * 3.0, 0.0)) * 0.55 + noise(ring * 7.0 + vec2(0.0, lr * 9.0)) * 0.45;
+  n = mix(0.6, 1.25, n);
+  // Thin-disk temperature profile: hot white-blue inside, orange-red outside.
+  float t = (r - INNER) / (uOuter - INNER);
+  vec3 col = mix(vec3(1.0, 0.93, 0.85), vec3(1.0, 0.55, 0.2), smoothstep(0.0, 0.45, t));
+  col = mix(col, vec3(0.6, 0.16, 0.05), smoothstep(0.45, 1.0, t));
+  float flux = pow(INNER / r, 2.2) * (1.0 - 0.75 * sqrt(INNER / r)) * 4.0;
+  // Doppler beaming: gas moving toward the viewer is brighter.
+  vec3 orbit = normalize(cross(uAxis, h / r));
+  float toward = dot(orbit, -rd) * sqrt(0.5 / max(r - 1.0, 0.5));
+  flux *= pow(max(1.0 + 1.2 * toward, 0.05), 3.0);
+  float edge = smoothstep(0.0, 0.08, t) * smoothstep(1.0, 0.6, t);
+  float a = clamp(flux * edge * n * 0.9, 0.0, 1.0);
+  return vec4(col * flux * edge * n, a);
+}
 
-  // Hot white-blue inside, cooling to orange-red outside (T ∝ r^-3/4).
-  vec3 hot = vec3(0.85, 0.92, 1.0);
-  vec3 warm = vec3(1.0, 0.62, 0.25);
-  vec3 cool = vec3(0.75, 0.2, 0.08);
-  vec3 col = mix(hot, warm, smoothstep(0.0, 0.35, t));
-  col = mix(col, cool, smoothstep(0.35, 1.0, t));
-  float bright = pow(1.0 - t, 1.6) * (0.55 + 0.9 * n);
+// First crossing of the disk plane along o + rd·s, 0 < s < sMax.
+vec4 crossDisk(vec3 o, vec3 rd, float sMax) {
+  float dn = dot(rd, uAxis);
+  if (abs(dn) < 1e-5) return vec4(0.0);
+  float s = -dot(o, uAxis) / dn;
+  if (s <= 0.0 || s > sMax) return vec4(0.0);
+  return disk(o + rd * s, rd);
+}
 
-  // Relativistic beaming: the side turning toward us is brighter.
-  vec3 radial = normalize(vWorld - uCentre);
-  vec3 orbitDir = normalize(cross(uAxis, radial));
-  float toward = dot(orbitDir, normalize(cameraPosition - vWorld));
-  bright *= pow(1.0 + 0.45 * toward, 2.5);
+void main() {
+  float edgeR = length(vUv - 0.5) * 2.0;
+  if (edgeR > 1.0) discard;
 
-  float edge = smoothstep(0.0, 0.04, t) * smoothstep(1.0, 0.8, t);
-  vec3 c = col * bright * edge * 0.8;
-  gl_FragColor = vec4(c / (1.0 + c * 0.35), 1.0);
+  vec3 d = normalize(vWorld - cameraPosition);
+  vec3 o = (cameraPosition - uCentre) / uRs;          // camera, in Rs, hole at origin
+  float sQ = -dot(o, d);                              // distance to closest approach
+  vec3 q = o + d * sQ;
+  float b = length(q);                                // impact parameter, Rs
+  float fade = 1.0 - smoothstep(0.55, 1.0, edgeR);
+
+  // Light path as two straight legs: camera -> closest approach -> bent onward.
+  vec4 front = uActive > 0.5 ? crossDisk(o, d, max(sQ, 0.0)) : vec4(0.0);
+  vec3 col = vec3(0.0);
+  float alphaOut = 1.0;
+  if (b < 2.598) {
+    col = vec3(0.0);                                  // captured: the shadow
+  } else {
+    float bend = 2.0 / (b - 1.35) * fade;
+    vec3 toward = -q / b;
+    vec3 bent = normalize(d * cos(bend) + toward * sin(bend));
+    vec4 back = uActive > 0.5 ? crossDisk(q, bent, uOuter * 4.0) : vec4(0.0);
+    col = back.rgb + skyColour(bent) * uHasSky * (1.0 - back.a);
+    // Outside the disk, blend the patch into the ordinary sky.
+    alphaOut = max(1.0 - smoothstep(0.75, 1.0, edgeR), back.a);
+  }
+  col = front.rgb + col * (1.0 - front.a);
+
+  float ring = exp(-pow((b - 2.64) / 0.05, 2.0));
+  col += uRing * ring * (uActive > 0.5 ? 0.45 : 0.5);
+  gl_FragColor = vec4(col / (1.0 + col * 0.25), max(alphaOut, front.a));
   #include <colorspace_fragment>
 }
 `;
@@ -249,7 +307,7 @@ void main() {
   float fade = pow(along, 3.0);
   // Soften the cone's silhouette so it reads as a beam, not a solid.
   float across = sin(vUv.x * 3.14159265 * 2.0) * 0.5 + 0.5;
-  gl_FragColor = vec4(vec3(0.45, 0.65, 1.0) * fade * (0.03 + 0.05 * across), 1.0);
+  gl_FragColor = vec4(vec3(0.45, 0.65, 1.0) * fade * (0.008 + 0.018 * across), 1.0);
   #include <colorspace_fragment>
 }
 `;
@@ -257,6 +315,13 @@ const uvVertex = /* glsl */ `
 varying vec2 vUv;
 void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
 `;
+
+/** Disk inclination about x (radians); the close-up camera arrives just above its plane. */
+export const DISK_TILT = 0.22;
+/** Lensed patch diameter, in Schwarzschild radii. */
+const LENS_SPAN_RS = 60;
+/** Must match the close-up view's SkyDome gain so the patch blends in. */
+export const LENS_SKY_GAIN = 0.55;
 
 interface BlackHoleProps {
   /** Schwarzschild radius in scene units. */
@@ -270,43 +335,38 @@ interface BlackHoleProps {
 export function BlackHoleBody({ rs, diskOuterRs, jets, position }: BlackHoleProps) {
   const group = useRef<Group>(null);
   const active = diskOuterRs > 0;
-  const tilt = 0.22;
+  const tilt = DISK_TILT;
+  const lensSpan = Math.max(LENS_SPAN_RS, diskOuterRs * 2.6);
 
   const shadow = useMemo(
     () =>
       new ShaderMaterial({
-        vertexShader: uvVertex,
-        fragmentShader: shadowFragment,
-        uniforms: { uActive: { value: active ? 1 : 0.25 }, uRing: { value: new Color(active ? "#ffb870" : "#9fb4d8") } },
+        vertexShader: lensVertex,
+        fragmentShader: lensFragment,
+        uniforms: {
+          uSky: { value: null },
+          uSkyGain: { value: LENS_SKY_GAIN },
+          uHasSky: { value: 0 },
+          uCentre: { value: new Vector3() },
+          uRs: { value: rs },
+          uActive: { value: active ? 1 : 0 },
+          uRing: { value: new Color(active ? "#ffd2a0" : "#b8c8e8") },
+          uAxis: { value: new Vector3(0, Math.cos(DISK_TILT), Math.sin(DISK_TILT)) },
+          uOuter: { value: Math.max(diskOuterRs, 4) },
+          uTime: { value: 0 },
+        },
         transparent: true,
-        depthWrite: true,
+        depthWrite: false,
         toneMapped: false,
       }),
-    [active],
-  );
-
-  const disk = useMemo(
-    () =>
-      active
-        ? new ShaderMaterial({
-            vertexShader: diskVertex,
-            fragmentShader: diskFragment,
-            uniforms: {
-              uInner: { value: 3 * rs },
-              uOuter: { value: diskOuterRs * rs },
-              uTime: { value: 0 },
-              uCentre: { value: new Vector3() },
-              uAxis: { value: new Vector3(0, 1, 0) },
-            },
-            side: DoubleSide,
-            transparent: true,
-            blending: AdditiveBlending,
-            depthWrite: false,
-            toneMapped: false,
-          })
-        : null,
     [active, rs, diskOuterRs],
   );
+  const sky = useRealTexture(STARMAP_SOURCES[0]);
+  useEffect(() => {
+    if (!sky) return;
+    shadow.uniforms.uSky.value = sky;
+    shadow.uniforms.uHasSky.value = 1;
+  }, [shadow, sky]);
 
   const jet = useMemo(
     () =>
@@ -326,19 +386,17 @@ export function BlackHoleBody({ rs, diskOuterRs, jets, position }: BlackHoleProp
 
   useEffect(() => () => {
     shadow.dispose();
-    disk?.dispose();
     jet?.dispose();
-  }, [shadow, disk, jet]);
+  }, [shadow, jet]);
 
   useFrame(({ clock }) => {
-    if (!disk || !group.current) return;
-    disk.uniforms.uTime.value = clock.elapsedTime;
-    group.current.getWorldPosition(disk.uniforms.uCentre.value);
-    disk.uniforms.uAxis.value.set(0, Math.cos(tilt), Math.sin(tilt));
+    if (!group.current) return;
+    group.current.getWorldPosition(shadow.uniforms.uCentre.value);
+    shadow.uniforms.uTime.value = clock.elapsedTime;
   });
 
   const jetLength = rs * 140;
-  const jetGeometry = useMemo(() => new ConeGeometry(rs * 3.5, jetLength, 32, 1, true), [rs, jetLength]);
+  const jetGeometry = useMemo(() => new ConeGeometry(rs * 7, jetLength, 32, 1, true), [rs, jetLength]);
   useEffect(() => () => jetGeometry.dispose(), [jetGeometry]);
 
   return (
@@ -349,15 +407,10 @@ export function BlackHoleBody({ rs, diskOuterRs, jets, position }: BlackHoleProp
       </mesh>
       <Billboard>
         <mesh material={shadow} renderOrder={1} raycast={() => null}>
-          <planeGeometry args={[rs * 10, rs * 10]} />
+          <planeGeometry args={[rs * lensSpan, rs * lensSpan]} />
         </mesh>
       </Billboard>
       <group rotation={[tilt, 0, 0]}>
-        {disk && (
-          <mesh rotation={[-Math.PI / 2, 0, 0]} material={disk} renderOrder={2} raycast={() => null}>
-            <ringGeometry args={[3 * rs, diskOuterRs * rs, 256, 12]} />
-          </mesh>
-        )}
         {jet && (
           <>
             <mesh geometry={jetGeometry} material={jet} position={[0, jetLength / 2 + rs * 3, 0]} rotation={[Math.PI, 0, 0]} raycast={() => null} />

@@ -1,4 +1,4 @@
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import {
   AdditiveBlending,
@@ -14,7 +14,8 @@ import type { SpaceObject } from "../domain/types";
 import { useTimeStore } from "../state/timeStore";
 import { selectObject, useSelectionStore } from "../state/selectionStore";
 import { getRenderPosition, getRenderRadius, syncRenderPositions } from "./renderRegistry";
-import { atmosphereFragment, ringFragment, ringVertex, surfaceFragment, surfaceVertex } from "./shaders";
+import { atmosphereFragment, cloudFragment, ringFragment, ringVertex, surfaceFragment, surfaceVertex } from "./shaders";
+import { BODY_TEXTURES, useRealTexture } from "./realTextures";
 import { getBakedSurface } from "./bake";
 import { BodyLabel } from "./BodyLabel";
 
@@ -27,6 +28,7 @@ export function Body({ obj }: { obj: SpaceObject }) {
   const gl = useThree((s) => s.gl);
   const group = useRef<Group>(null!);
   const surface = useRef<Mesh>(null!);
+  const clouds = useRef<Mesh>(null);
   const lastSimTime = useRef<number | null>(null);
   const radius = getRenderRadius(obj.id);
   const { visual, physical } = obj;
@@ -43,10 +45,49 @@ export function Body({ obj }: { obj: SpaceObject }) {
           uHighlight: { value: 0 },
           uLightPos: { value: new Vector3() },
           uEmissive: { value: new Color(0, 0, 0) },
+          uNight: { value: null },
+          uNightGain: { value: 0 },
+          uOcean: { value: null },
+          uOceanGain: { value: 0 },
         },
       }),
     [gl, obj, visual.atmosphere],
   );
+
+  // Real surface maps replace the baked placeholder as they arrive.
+  const files = BODY_TEXTURES[obj.id];
+  const map = useRealTexture(files?.map);
+  const night = useRealTexture(files?.night);
+  const ocean = useRealTexture(files?.ocean, true);
+  const cloudMap = useRealTexture(files?.clouds, true);
+  const ringMap = useRealTexture(files?.ring);
+  useEffect(() => {
+    const u = surfaceMat.uniforms;
+    if (map) u.uMap.value = map;
+    if (night) {
+      u.uNight.value = night;
+      u.uNightGain.value = 1.4;
+    }
+    if (ocean) {
+      u.uOcean.value = ocean;
+      u.uOceanGain.value = 0.55;
+    }
+  }, [surfaceMat, map, night, ocean]);
+
+  const cloudMat = useMemo(
+    () =>
+      cloudMap
+        ? new ShaderMaterial({
+            vertexShader: surfaceVertex,
+            fragmentShader: cloudFragment,
+            uniforms: { uMap: { value: cloudMap }, uLightPos: { value: new Vector3() } },
+            transparent: true,
+            depthWrite: false,
+          })
+        : null,
+    [cloudMap],
+  );
+  useEffect(() => () => cloudMat?.dispose(), [cloudMat]);
 
   const atmosphereMat = useMemo(
     () =>
@@ -80,6 +121,8 @@ export function Body({ obj }: { obj: SpaceObject }) {
               uOuter: { value: visual.rings.outerRadii * radius },
               uPlanetCenter: { value: new Vector3() },
               uPlanetRadius: { value: radius },
+              uRingMap: { value: null },
+              uHasRingMap: { value: 0 },
             },
             side: DoubleSide,
             transparent: true,
@@ -88,6 +131,12 @@ export function Body({ obj }: { obj: SpaceObject }) {
         : null,
     [visual.rings, radius],
   );
+
+  useEffect(() => {
+    if (!ringMat || !ringMap) return;
+    ringMat.uniforms.uRingMap.value = ringMap;
+    ringMat.uniforms.uHasRingMap.value = 1;
+  }, [ringMat, ringMap]);
 
   useFrame((_, delta) => {
     const { timeMs } = useTimeStore.getState();
@@ -105,6 +154,8 @@ export function Body({ obj }: { obj: SpaceObject }) {
       const cap = MAX_SPIN_RATE * delta;
       surface.current.rotation.y += Math.max(-cap, Math.min(cap, dAngle));
     }
+    // Weather drifts a little faster than the ground turns.
+    if (clouds.current) clouds.current.rotation.y = surface.current.rotation.y * 1.04 + 0.4;
     lastSimTime.current = timeMs;
 
     const { selectedId, hoveredId } = useSelectionStore.getState();
@@ -140,6 +191,11 @@ export function Body({ obj }: { obj: SpaceObject }) {
         >
           <sphereGeometry args={[1, 64, 48]} />
         </mesh>
+        {cloudMat && (
+          <mesh ref={clouds} scale={radius * 1.006} material={cloudMat} renderOrder={1} raycast={() => null}>
+            <sphereGeometry args={[1, 64, 48]} />
+          </mesh>
+        )}
         {ringMat && visual.rings && (
           <mesh rotation={[-Math.PI / 2, 0, 0]} material={ringMat} renderOrder={2} raycast={() => null}>
             <ringGeometry

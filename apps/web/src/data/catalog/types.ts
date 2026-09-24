@@ -1,5 +1,6 @@
 import type { Vector3 } from "three";
 import type { ExternalSource } from "../../domain/types";
+import type { SkyPhoto } from "./photos";
 
 /** Which view level an object is placed in (units: ly or Mly). */
 export type CatalogLevel = "interstellar" | "cosmic";
@@ -101,6 +102,8 @@ export interface CatalogObject {
   blackHole?: BlackHolePhysics;
   system?: ExoSystem;
   visual?: NebulaVisual | GalaxyVisual;
+  /** A real telescope photograph, placed from its astrometry. */
+  photo?: SkyPhoto;
   /** Label accent colour. */
   accent: string;
   /** Distance from Earth for display (level units already imply ly/Mly). */

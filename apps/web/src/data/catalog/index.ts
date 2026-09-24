@@ -1,12 +1,31 @@
 import { INTERSTELLAR_CATALOG } from "./interstellar";
 import { COSMIC_CATALOG } from "./cosmic";
 import type { CatalogObject, ExoPlanet } from "./types";
+import { PHOTOS, photoSize } from "./photos";
 
 export * from "./types";
+export type { SkyPhoto } from "./photos";
+export { photoSize } from "./photos";
 export { KNOWN_STARS, physicsForStar } from "./starPhysics";
 export { SURVEY_SOURCE } from "./cosmic";
 
-export const CATALOG: CatalogObject[] = [...INTERSTELLAR_CATALOG, ...COSMIC_CATALOG];
+/**
+ * Objects with a real photograph arrive looking from Earth's direction, so the
+ * first view matches the telescope's, framed to the photo.
+ */
+function withPhoto(o: CatalogObject): CatalogObject {
+  const photo = PHOTOS[o.id];
+  if (!photo) return o;
+  const [w, h] = photoSize(photo, o.position.length());
+  return {
+    ...o,
+    photo,
+    viewDirection: o.position.clone().normalize().negate(),
+    framing: Math.max(1.3 * h, 1.1 * w),
+  };
+}
+
+export const CATALOG: CatalogObject[] = [...INTERSTELLAR_CATALOG, ...COSMIC_CATALOG].map(withPhoto);
 
 const BY_ID = new Map(CATALOG.map((o) => [o.id, o]));
 
