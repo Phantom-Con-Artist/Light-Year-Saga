@@ -74,7 +74,8 @@ export function StarSphere({ radius, temperatureK, position }: { radius: number;
   useEffect(() => {
     if (!sunMap) return;
     material.uniforms.uMap.value = sunMap;
-    material.uniforms.uTintMix.value = 1;
+    // Sun-like stars keep the photographed colour; hotter and cooler ones take their own.
+    material.uniforms.uTintMix.value = 0.2 + 0.8 * Math.min(1, Math.max(0, (Math.abs(temperatureK - 5772) - 300) / 1500));
     material.uniforms.uBoost.value = temperatureK < 4500 ? 1.1 : 1.25;
   }, [material, sunMap, temperatureK]);
 
@@ -163,6 +164,12 @@ export function PlanetBody({ planet, radius, lightPosition, position, spin = 0.2
   }, [gl, planet]);
   useEffect(() => () => material.dispose(), [material]);
 
+  // Solar System worlds (e.g. in the size line-up) use their real surface maps.
+  const real = useRealTexture(BODY_TEXTURES[planet.id]?.map);
+  useEffect(() => {
+    if (real) material.uniforms.uMap.value = real;
+  }, [material, real]);
+
   useFrame((_, delta) => {
     material.uniforms.uLightPos.value.copy(lightPosition);
     if (mesh.current) mesh.current.rotation.y += delta * spin;
@@ -206,6 +213,7 @@ uniform vec3 uRing;
 uniform vec3 uAxis;       // disk normal (world)
 uniform float uOuter;     // disk outer edge, Rs
 uniform float uTime;
+uniform float uLens;      // 0: no sky lensing (objects placed side by side in the size line-up)
 varying vec2 vUv;
 varying vec3 vWorld;
 
@@ -213,12 +221,22 @@ const float OBLIQUITY = 0.40909280422;
 const float PI = 3.14159265359;
 const float INNER = 3.0;  // innermost stable circular orbit, Rs
 
-vec3 skyColour(vec3 d) {
+vec2 skyUv(vec3 d) {
   vec3 ecl = vec3(d.x, -d.z, d.y);
   float ce = cos(OBLIQUITY), se = sin(OBLIQUITY);
   vec3 eq = vec3(ecl.x, ecl.y * ce - ecl.z * se, ecl.y * se + ecl.z * ce);
-  vec2 uv = vec2(fract(0.5 - atan(eq.y, eq.x) / (2.0 * PI)), 0.5 + asin(clamp(eq.z, -1.0, 1.0)) / PI);
-  return texture2D(uSky, uv).rgb * uSkyGain;
+  return vec2(fract(0.5 - atan(eq.y, eq.x) / (2.0 * PI)), 0.5 + asin(clamp(eq.z, -1.0, 1.0)) / PI);
+}
+
+// Sample the bent direction at the sharpness of the unbent sky, so the patch
+// matches the backdrop instead of falling to a blurry, blocky mip level.
+vec3 skyColour(vec3 bent, vec3 straight) {
+  vec2 uv0 = skyUv(straight);
+  vec2 alt = vec2(fract(uv0.x + 0.5), uv0.y);
+  vec2 dx = dFdx(uv0), dy = dFdy(uv0);
+  vec2 dxA = dFdx(alt), dyA = dFdy(alt);
+  if (abs(dxA.x) + abs(dyA.x) < abs(dx.x) + abs(dy.x)) { dx = dxA; dy = dyA; }
+  return textureGrad(uSky, skyUv(bent), dx, dy).rgb * uSkyGain;
 }
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
@@ -270,9 +288,17 @@ void main() {
 
   vec3 d = normalize(vWorld - cameraPosition);
   vec3 o = (cameraPosition - uCentre) / uRs;          // camera, in Rs, hole at origin
-  float sQ = -dot(o, d);                              // distance to closest approach
-  vec3 q = o + d * sQ;
-  float b = length(q);                                // impact parameter, Rs
+  float D = length(o);
+  vec3 c = -o / D;                                    // direction to the hole
+  // Impact parameter via |d × c| = sin θ: stays precise at the tiny angles of a
+  // distant hole (1 − cos²θ would cancel to a few float steps and look blocky).
+  vec3 dc = cross(d, c);
+  float sinT = length(dc);
+  float b = D * sinT;                                 // impact parameter, Rs
+  float sQ = D * dot(d, c);                           // distance to closest approach
+  // Closest-approach point: from the hole, perpendicular to the ray, away from it.
+  vec3 toHole = sinT > 1e-12 ? normalize(cross(dc, d)) : vec3(0.0, 1.0, 0.0);
+  vec3 q = -toHole * b;
   float fade = 1.0 - smoothstep(0.55, 1.0, edgeR);
 
   // Light path as two straight legs: camera -> closest approach -> bent onward.
@@ -282,19 +308,20 @@ void main() {
   if (b < 2.598) {
     col = vec3(0.0);                                  // captured: the shadow
   } else {
-    float bend = 2.0 / (b - 1.35) * fade;
-    vec3 toward = -q / b;
-    vec3 bent = normalize(d * cos(bend) + toward * sin(bend));
+    float bend = 2.0 / (b - 1.35) * fade * uLens;
+    vec3 bent = normalize(d * cos(bend) + toHole * sin(bend));
     vec4 back = uActive > 0.5 ? crossDisk(q, bent, uOuter * 4.0) : vec4(0.0);
-    col = back.rgb + skyColour(bent) * uHasSky * (1.0 - back.a);
+    col = back.rgb + skyColour(bent, d) * uHasSky * uLens * (1.0 - back.a);
     // Outside the disk, blend the patch into the ordinary sky.
-    alphaOut = max(1.0 - smoothstep(0.75, 1.0, edgeR), back.a);
+    alphaOut = uLens > 0.5 ? max(1.0 - smoothstep(0.75, 1.0, edgeR), back.a) : back.a;
   }
   col = front.rgb + col * (1.0 - front.a);
 
   float ring = exp(-pow((b - 2.64) / 0.05, 2.0));
   col += uRing * ring * (uActive > 0.5 ? 0.45 : 0.5);
-  gl_FragColor = vec4(col / (1.0 + col * 0.25), max(alphaOut, front.a));
+  alphaOut = max(max(alphaOut, front.a), clamp(ring * 2.0, 0.0, 1.0));
+  if (alphaOut < 0.004) discard;
+  gl_FragColor = vec4(col / (1.0 + col * 0.25), alphaOut);
   #include <colorspace_fragment>
 }
 `;
@@ -330,9 +357,11 @@ interface BlackHoleProps {
   diskOuterRs: number;
   jets?: boolean;
   position?: Vector3;
+  /** Bend the background sky (off where objects are artificially side by side). */
+  lensing?: boolean;
 }
 
-export function BlackHoleBody({ rs, diskOuterRs, jets, position }: BlackHoleProps) {
+export function BlackHoleBody({ rs, diskOuterRs, jets, position, lensing = true }: BlackHoleProps) {
   const group = useRef<Group>(null);
   const active = diskOuterRs > 0;
   const tilt = DISK_TILT;
@@ -354,12 +383,13 @@ export function BlackHoleBody({ rs, diskOuterRs, jets, position }: BlackHoleProp
           uAxis: { value: new Vector3(0, Math.cos(DISK_TILT), Math.sin(DISK_TILT)) },
           uOuter: { value: Math.max(diskOuterRs, 4) },
           uTime: { value: 0 },
+          uLens: { value: lensing ? 1 : 0 },
         },
         transparent: true,
         depthWrite: false,
         toneMapped: false,
       }),
-    [active, rs, diskOuterRs],
+    [active, rs, diskOuterRs, lensing],
   );
   const sky = useRealTexture(STARMAP_SOURCES[0]);
   useEffect(() => {

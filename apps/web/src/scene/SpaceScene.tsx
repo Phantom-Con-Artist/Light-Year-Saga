@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
+import { useEffect, useState } from "react";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { PerformanceMonitor } from "@react-three/drei";
 import { ACESFilmicToneMapping } from "three";
 import { useTimeStore } from "../state/timeStore";
@@ -16,7 +16,26 @@ function ClockDriver() {
   return null;
 }
 
-const MAX_DPR = Math.min(window.devicePixelRatio, 1.75);
+/** Phones have tiny, very dense screens and weaker GPUs: cap lower there. */
+const MAX_DPR = Math.min(window.devicePixelRatio, window.matchMedia("(pointer: coarse)").matches ? 1.5 : 1.75);
+
+/**
+ * In portrait the default 45° vertical field of view leaves a sliver of sky
+ * side to side; widen it so a phone shows as much of space as it can.
+ */
+function FovAdapter() {
+  const camera = useThree((s) => s.camera);
+  const aspect = useThree((s) => s.size.width / s.size.height);
+  useEffect(() => {
+    if (!("fov" in camera)) return;
+    const fov = aspect >= 1 ? 45 : aspect > 0.75 ? 52 : 62;
+    if (camera.fov !== fov) {
+      camera.fov = fov;
+      camera.updateProjectionMatrix();
+    }
+  }, [camera, aspect]);
+  return null;
+}
 
 export function SpaceScene() {
   // Start at native-ish resolution and step down if the frame rate drops.
@@ -39,6 +58,7 @@ export function SpaceScene() {
       />
       <color attach="background" args={["#000000"]} />
       <ClockDriver />
+      <FovAdapter />
       {level === "system" && <SolarSystemScene />}
       {level === "interstellar" && <InterstellarScene />}
       {level === "cosmic" && <CosmicScene />}

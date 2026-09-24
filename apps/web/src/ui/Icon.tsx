@@ -17,6 +17,9 @@ const PATHS = {
   next: "M9 5l7 7-7 7",
   prev: "M15 5l-7 7 7 7",
   back: "M10 6l-6 6 6 6M4 12h16",
+  menu: "M4 7h16M4 12h16M4 17h16",
+  list: "M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01",
+  clock: "M12 4a8 8 0 1 1 0 16 8 8 0 0 1 0-16zM12 8v4l3 2",
 } as const;
 
 export type IconName = keyof typeof PATHS;

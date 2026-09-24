@@ -6,7 +6,7 @@ import { SCALE_LINEUP, type ScaleEntry } from "../../data/scaleLineup";
 import { scaleCursor, useScaleStore } from "../../state/scaleStore";
 import { STARMAP_SOURCES, SkyDome } from "../Backdrop";
 import { ScreenLabel } from "../ScreenLabel";
-import { BlackHoleBody, OrbitRing, PlanetBody, StarSphere } from "../common/Bodies";
+import { BlackHoleBody, OrbitRing, PlanetBody, StarSphere, LENS_SKY_GAIN } from "../common/Bodies";
 import { reportFlightSpeed } from "../../state/flightStore";
 
 /** Units: kilometres. Positions are recomputed every frame relative to the focus (floating origin). */
@@ -65,7 +65,7 @@ function Entry({ entry, index, holder }: { entry: ScaleEntry; index: number; hol
     >
       {entry.kind === "planet" && entry.planet && <PlanetBody planet={entry.planet} radius={entry.radiusKm} lightPosition={light} spin={0.08} />}
       {entry.kind === "star" && <StarSphere radius={entry.radiusKm} temperatureK={entry.temperatureK ?? 5772} />}
-      {entry.kind === "black-hole" && <BlackHoleBody rs={entry.radiusKm} diskOuterRs={entry.diskOuterRs ?? 0} jets={entry.jets} />}
+      {entry.kind === "black-hole" && <BlackHoleBody rs={entry.radiusKm} diskOuterRs={entry.diskOuterRs ?? 0} jets={entry.jets} lensing={false} />}
       {entry.kind === "orbit" && (
         <>
           <OrbitRing radius={entry.radiusKm} color="#7d9bff" opacity={0.7} dashed={false} />
@@ -91,8 +91,27 @@ function Lineup() {
       const s = useScaleStore.getState();
       s.setTarget(s.target + Math.sign(e.deltaY) * 0.34);
     };
+    // Pinch works like the wheel: fingers together (zooming out) moves to bigger objects.
+    let lastSpread = 0;
+    const spread = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    const onTouchStart = (e: TouchEvent) => {
+      lastSpread = e.touches.length === 2 ? spread(e.touches) : 0;
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length !== 2 || lastSpread <= 0) return;
+      const now = spread(e.touches);
+      const s = useScaleStore.getState();
+      s.setTarget(s.target - Math.log(now / lastSpread) * 2.2);
+      lastSpread = now;
+    };
     el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
+    el.addEventListener("touchstart", onTouchStart, { passive: true });
+    el.addEventListener("touchmove", onTouchMove, { passive: true });
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchmove", onTouchMove);
+    };
   }, [gl]);
 
   useEffect(() => {
@@ -153,7 +172,7 @@ function Lineup() {
 export function ScaleScene() {
   return (
     <>
-      <SkyDome sources={STARMAP_SOURCES} gain={0.4} />
+      <SkyDome sources={STARMAP_SOURCES} gain={LENS_SKY_GAIN} />
       <Lineup />
       <OrbitControls makeDefault enableZoom={false} enablePan={false} enableDamping dampingFactor={0.08} rotateSpeed={0.45} minPolarAngle={0.35} maxPolarAngle={Math.PI - 0.35} />
     </>

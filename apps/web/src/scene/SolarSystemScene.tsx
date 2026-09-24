@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { useThree } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import type { PerspectiveCamera, Vector3 } from "three";
@@ -12,6 +12,38 @@ import { CameraRig } from "./CameraRig";
 import { SelectionReticle } from "./SelectionReticle";
 import { EclipticGrid, SkyDome } from "./Backdrop";
 import { useEdgeZoom } from "./useEdgeZoom";
+import { usePickProvider, useScreenPicking } from "./common/picking";
+import { projectToScreen } from "./common/project";
+import { getRenderPosition, getRenderRadius } from "./renderRegistry";
+import { isTouchDevice } from "../ui/useMedia";
+
+/**
+ * Touch: planets can be a few pixels wide, so taps are matched in screen space
+ * with a finger-sized radius (mouse clicks still raycast the spheres).
+ */
+function TouchPicking() {
+  const camera = useThree((s) => s.camera);
+  const size = useThree((s) => s.size);
+  const screen = useMemo(() => ({ x: 0, y: 0 }), []);
+  const pick = useCallback(
+    (x: number, y: number) => {
+      let best: { id: string; score: number } | null = null;
+      for (const obj of SOLAR_SYSTEM) {
+        const p = getRenderPosition(obj.id);
+        if (!projectToScreen(p, camera, size.width, size.height, screen)) continue;
+        const d = Math.hypot(screen.x - x, screen.y - y);
+        const apparent = (getRenderRadius(obj.id) / Math.max(camera.position.distanceTo(p), 1e-6)) * size.height;
+        if (d > Math.max(22, apparent)) continue;
+        if (!best || d < best.score) best = { id: obj.id, score: d };
+      }
+      return best;
+    },
+    [camera, size, screen],
+  );
+  usePickProvider(pick);
+  useScreenPicking(selectObject);
+  return null;
+}
 
 const MAX_DISTANCE = 1400;
 
@@ -60,6 +92,7 @@ export function SolarSystemScene() {
       )}
 
       <SelectionReticle />
+      {isTouchDevice() && <TouchPicking />}
       <OrbitControls
         makeDefault
         enableDamping

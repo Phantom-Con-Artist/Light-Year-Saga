@@ -1,6 +1,8 @@
 import { useEffect, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { Vector3 } from "three";
+import { tapLabels, type TapLabel } from "./common/picking";
+import { isTouchDevice } from "../ui/useMedia";
 
 interface ScreenLabelProps {
   /** World position, or a getter for moving objects. */
@@ -44,6 +46,7 @@ export function ScreenLabel({
   const size = useThree((s) => s.size);
   const el = useRef<HTMLButtonElement | null>(null);
   const handlers = useRef({ onClick, onHover });
+  const touch = isTouchDevice();
   handlers.current = { onClick, onHover };
 
   useEffect(() => {
@@ -58,7 +61,10 @@ export function ScreenLabel({
     b.addEventListener("pointerleave", () => handlers.current.onHover?.(false));
     gl.domElement.parentElement!.appendChild(b);
     el.current = b;
+    const tap: TapLabel = { el: b, onTap: () => handlers.current.onClick?.() };
+    tapLabels.add(tap);
     return () => {
+      tapLabels.delete(tap);
       b.remove();
       el.current = null;
     };
@@ -101,7 +107,8 @@ export function ScreenLabel({
     const y = (-world.y * 0.5 + 0.5) * size.height;
     b.style.display = "";
     b.style.opacity = a < 1 ? String(a) : "";
-    b.style.pointerEvents = a > 0.5 && (handlers.current.onClick || handlers.current.onHover) ? "auto" : "none";
+    // Touch: labels never swallow a swipe; the canvas resolves taps on them.
+    b.style.pointerEvents = !touch && a > 0.5 && (handlers.current.onClick || handlers.current.onHover) ? "auto" : "none";
     b.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
     if (active) b.dataset.active = String(active());
   });

@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
+import { useIsMobile } from "./useMedia";
 import type { DataFreshness, ExternalSource, SpaceObject } from "../domain/types";
 import { getCatalogObject, getExoPlanet, physicsForStar, type CatalogObject, type PlanetRef } from "../data/catalog";
 import {
@@ -85,6 +86,8 @@ function Sources({ sources, footnote }: { sources: ExternalSource[]; footnote?: 
 }
 
 function Shell({ id, title, subtitle, children, action }: { id: string; title: string; subtitle: ReactNode; children: ReactNode; action?: ReactNode }) {
+  const mobile = useIsMobile();
+  if (mobile) return <Sheet key={id} title={title} subtitle={subtitle} action={action}>{children}</Sheet>;
   return (
     <aside
       key={id}
@@ -102,6 +105,90 @@ function Shell({ id, title, subtitle, children, action }: { id: string; title: s
       </header>
       {action && <div className="px-4 pb-3.5">{action}</div>}
       {children}
+    </aside>
+  );
+}
+
+/**
+ * Phone inspector: a bottom sheet that starts as a small peek (title + main
+ * action) so the view stays visible. It follows the finger: drag up to
+ * expand, drag down to collapse, and drag down again to dismiss.
+ */
+function Sheet({ title, subtitle, children, action }: { title: string; subtitle: ReactNode; children: ReactNode; action?: ReactNode }) {
+  const [expanded, setExpanded] = useState(false);
+  const [drag, setDrag] = useState(0);
+  const start = useRef<{ y: number; t: number } | null>(null);
+  const body = useRef<HTMLDivElement>(null);
+
+  const onDown = (e: React.PointerEvent) => {
+    // Inside the expanded list, a drag scrolls the list unless it is already at the top.
+    if (expanded && body.current && body.current.contains(e.target as Node) && body.current.scrollTop > 0) return;
+    start.current = { y: e.clientY, t: performance.now() };
+  };
+  const onMove = (e: React.PointerEvent) => {
+    if (!start.current) return;
+    const dy = e.clientY - start.current.y;
+    if (Math.abs(dy) > 6 && !(e.currentTarget as HTMLElement).hasPointerCapture(e.pointerId)) {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    }
+    setDrag(dy);
+  };
+  const onUp = (e: React.PointerEvent) => {
+    if (!start.current) return;
+    const dy = e.clientY - start.current.y;
+    const speed = dy / Math.max(performance.now() - start.current.t, 1); // px per ms
+    start.current = null;
+    setDrag(0);
+    const tapped = Math.abs(dy) < 6;
+    if (tapped) {
+      // A tap on the header toggles; taps elsewhere belong to buttons and links.
+      if ((e.target as HTMLElement).closest("[data-sheet-handle]")) setExpanded((x) => !x);
+      return;
+    }
+    if (dy < -40 || speed < -0.5) setExpanded(true);
+    else if (dy > 60 || speed > 0.5) {
+      if (expanded) setExpanded(false);
+      else selectObject(null);
+    }
+  };
+
+  const lift = expanded ? Math.max(drag, 0) : drag;
+  return (
+    <aside
+      aria-label={`${title} details`}
+      className="panel animate-panel-in safe-bottom pointer-events-auto fixed inset-x-0 bottom-0 z-30 flex touch-none flex-col !rounded-b-none"
+      style={{
+        maxHeight: expanded ? "72dvh" : undefined,
+        transform: lift ? `translateY(${Math.max(lift, -120)}px)` : undefined,
+        transition: start.current ? "none" : "transform 0.25s ease, max-height 0.25s ease",
+      }}
+      onPointerDown={onDown}
+      onPointerMove={onMove}
+      onPointerUp={onUp}
+      onPointerCancel={() => {
+        start.current = null;
+        setDrag(0);
+      }}
+    >
+      <div data-sheet-handle className="shrink-0 cursor-grab px-4 pt-2 pb-3">
+        <div className="mx-auto mb-2.5 h-1 w-10 rounded-full bg-white/25" />
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="truncate text-[18px] font-semibold tracking-tight text-ink">{title}</h2>
+            <p className="mt-0.5 truncate text-[13px] text-ink-dim">{subtitle}</p>
+          </div>
+          <button type="button" className="btn -mt-0.5 -mr-1.5 !h-8" onClick={() => selectObject(null)} aria-label="Close">
+            <Icon name="close" size={14} />
+          </button>
+        </div>
+        {!expanded && <p className="mt-1.5 text-[11px] text-ink-faint">Swipe up for details</p>}
+      </div>
+      {action && <div className="shrink-0 px-4 pb-3">{action}</div>}
+      {expanded && (
+        <div ref={body} className="thin-scroll min-h-0 flex-1 touch-pan-y overflow-y-auto">
+          {children}
+        </div>
+      )}
     </aside>
   );
 }

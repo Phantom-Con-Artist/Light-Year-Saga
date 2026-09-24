@@ -1,4 +1,7 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useUiStore } from "../state/uiStore";
+import { useIsMobile } from "./useMedia";
+import { Icon } from "./Icon";
 import { SOLAR_SYSTEM } from "../data/solarSystem";
 import { CATALOG, type CatalogObject } from "../data/catalog";
 import { starDistanceLy, starId, starName, useStarStore, type StarCatalog } from "../data/stars";
@@ -199,16 +202,59 @@ function ScaleList() {
   );
 }
 
-/** Object list for the current view level. */
-export function Navigator() {
+function Lists() {
   const level = useViewStore((s) => s.level);
   return (
-    <nav aria-label="Objects" className="panel thin-scroll animate-fade-in pointer-events-auto fixed top-20 left-4 z-10 hidden max-h-[calc(100vh-10rem)] w-56 overflow-y-auto p-1.5 lg:block">
+    <>
       {level === "system" && <SolarSystemList />}
       {level === "interstellar" && <InterstellarList />}
       {level === "cosmic" && <CosmicList />}
       {level === "focus" && <FocusList />}
       {level === "scale" && <ScaleList />}
+    </>
+  );
+}
+
+/** Object list for the current view level (a sheet from the menu on phones). */
+export function Navigator() {
+  const mobile = useIsMobile();
+  const open = useUiStore((s) => s.browseOpen);
+
+  // Picking something from the sheet closes it so the view is visible again.
+  useEffect(() => {
+    if (!mobile || !open) return;
+    const close = () => useUiStore.getState().setBrowse(false);
+    const unsubSel = useSelectionStore.subscribe((s, p) => s.selectedId !== p.selectedId && s.selectedId && close());
+    const unsubScale = useScaleStore.subscribe((s, p) => s.target !== p.target && close());
+    return () => {
+      unsubSel();
+      unsubScale();
+    };
+  }, [mobile, open]);
+
+  if (mobile) {
+    if (!open) return null;
+    return (
+      <div className="fixed inset-0 z-40 bg-black/50" onClick={() => useUiStore.getState().setBrowse(false)}>
+        <nav
+          aria-label="Objects"
+          className="panel thin-scroll animate-panel-in safe-bottom absolute inset-x-2 top-14 bottom-2 overflow-y-auto p-1.5"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center justify-between px-2 pt-1 pb-2">
+            <span className="text-[15px] font-semibold text-ink">Browse</span>
+            <button type="button" className="btn" onClick={() => useUiStore.getState().setBrowse(false)} aria-label="Close">
+              <Icon name="close" size={14} />
+            </button>
+          </div>
+          <Lists />
+        </nav>
+      </div>
+    );
+  }
+  return (
+    <nav aria-label="Objects" className="panel thin-scroll animate-fade-in pointer-events-auto fixed top-20 left-4 z-10 hidden max-h-[calc(100vh-10rem)] w-56 overflow-y-auto p-1.5 lg:block">
+      <Lists />
     </nav>
   );
 }

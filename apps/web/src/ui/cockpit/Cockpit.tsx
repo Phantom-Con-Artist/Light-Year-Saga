@@ -139,12 +139,17 @@ export function Cockpit() {
       <div className="cockpit-reticle" aria-hidden="true" />
 
       {/* Mission bar */}
-      <div className="pointer-events-auto fixed inset-x-0 top-0 z-30 flex items-center justify-between gap-3 px-5 py-3">
-        <div className="flex items-center gap-3">
-          <span className="cockpit-badge">VOYAGE</span>
-          <div>
-            <div className="text-[15px] font-semibold text-ink">{mission.title}</div>
-            <div className="text-[11px] text-ink-faint">{mission.tagline}</div>
+      <div className="safe-top pointer-events-auto fixed inset-x-0 top-0 z-30 flex items-center justify-between gap-3 px-3 py-2 md:px-5 md:py-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="cockpit-badge max-md:hidden">VOYAGE</span>
+          <div className="min-w-0">
+            <div className="truncate text-[15px] font-semibold text-ink">{mission.title}</div>
+            <div className="truncate text-[11px] text-ink-faint">
+              <span className="md:hidden">
+                Stop {stepIndex + 1} of {mission.steps.length} · {step.title}
+              </span>
+              <span className="max-md:hidden">{mission.tagline}</span>
+            </div>
           </div>
         </div>
         <div className="hidden items-center gap-1.5 md:flex" aria-label="Progress">
@@ -157,13 +162,14 @@ export function Cockpit() {
             />
           ))}
         </div>
-        <button type="button" className="btn" onClick={() => useMissionStore.getState().exit()} title="Leave voyage (Esc)">
-          <Icon name="close" size={14} /> Exit voyage
+        <button type="button" className="btn shrink-0" onClick={() => useMissionStore.getState().exit()} title="Leave voyage (Esc)" aria-label="Exit voyage">
+          <Icon name="close" size={14} />
+          <span className="max-md:hidden">Exit voyage</span>
         </button>
       </div>
 
       {/* Console */}
-      <div className="pointer-events-auto fixed inset-x-0 bottom-0 z-30 flex justify-center px-3 pb-3">
+      <div className="safe-bottom pointer-events-auto fixed inset-x-0 bottom-0 z-30 flex justify-center px-2 md:px-3 md:pb-3">
         <div className="cockpit-console grid w-full max-w-[1100px] grid-cols-1 gap-3 md:grid-cols-[1fr_2.2fr_1fr]">
           <section className="cockpit-panel hidden md:block">
             <div className="label-caps">Destination {stepIndex + 1}/{mission.steps.length}</div>
@@ -182,7 +188,7 @@ export function Cockpit() {
                 <div className="text-[11px] text-ink-faint">Ship navigator</div>
               </div>
             </div>
-            <p className="mt-2.5 min-h-[3.2em] text-[15px] leading-relaxed text-ink" aria-live="polite">
+            <p className="mt-2 min-h-[3.2em] text-[14px] leading-snug text-ink md:mt-2.5 md:text-[15px] md:leading-relaxed" aria-live="polite">
               <TypeText text={line} onDone={setTyped} finish={finish} />
             </p>
             <div className="mt-2 flex items-center justify-end gap-2">
@@ -230,6 +236,8 @@ function CanopyFrame() {
       {/* Top canopy band */}
       <path d="M0 0 H1600 V58 Q1200 92 800 92 Q400 92 0 58 Z" fill="url(#hull)" />
       <path d="M0 58 Q400 92 800 92 Q1200 92 1600 58" fill="none" stroke="url(#rim)" strokeWidth="1.5" />
+      {/* Pillars and dashboard: desktop only — on a phone every pixel goes to the view. */}
+      <g className="max-md:hidden">
       {/* Side pillars */}
       <path d="M0 58 L70 100 L150 720 L0 900 Z" fill="url(#hull)" />
       <path d="M1600 58 L1530 100 L1450 720 L1600 900 Z" fill="url(#hull)" />
@@ -238,6 +246,7 @@ function CanopyFrame() {
       {/* Dashboard */}
       <path d="M0 900 L150 720 Q800 680 1450 720 L1600 900 Z" fill="url(#hull)" />
       <path d="M150 720 Q800 680 1450 720" fill="none" stroke="url(#rim)" strokeWidth="1.5" />
+      </g>
     </svg>
   );
 }

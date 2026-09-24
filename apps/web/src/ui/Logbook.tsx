@@ -132,7 +132,7 @@ export function Logbook() {
 export function Toasts() {
   const toasts = useDiscoveryStore((s) => s.toasts);
   return (
-    <div className="pointer-events-none fixed top-20 right-4 z-50 flex w-[280px] flex-col gap-2 md:right-[356px]" aria-live="polite">
+    <div className="pointer-events-none fixed inset-x-0 top-14 z-50 mx-auto flex w-[min(280px,calc(100vw-1rem))] flex-col gap-2 md:inset-x-auto md:top-20 md:right-[356px] md:mx-0" aria-live="polite">
       {toasts.map((t) => (
         <div key={t.key} className={`toast toast--${t.tone} animate-panel-in`}>
           <div className="text-[11px] font-medium tracking-wide uppercase opacity-80">{t.tone === "discovery" ? "New discovery" : t.tone === "rank" ? "Rank up" : "Voyage"}</div>

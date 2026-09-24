@@ -11,6 +11,7 @@ import { TOTAL_DISCOVERABLE, useDiscoveryStore } from "../state/discoveryStore";
 import { useUiStore } from "../state/uiStore";
 import { useAudioStore } from "../audio/audioStore";
 import { Icon } from "./Icon";
+import { useIsMobile } from "./useMedia";
 
 function Brand() {
   return (
@@ -24,7 +25,7 @@ function Brand() {
   );
 }
 
-function SearchBox() {
+function SearchBox({ mobile = false, onClose }: { mobile?: boolean; onClose?: () => void }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [cursor, setCursor] = useState(0);
@@ -50,10 +51,16 @@ function SearchBox() {
     setQuery("");
     setOpen(false);
     input.current?.blur();
+    onClose?.();
   };
 
+  // Phone: the search bar is opened on demand, so focus it straight away.
+  useEffect(() => {
+    if (mobile) input.current?.focus();
+  }, [mobile]);
+
   return (
-    <div className="pointer-events-auto relative w-full max-w-[320px]">
+    <div className={`pointer-events-auto relative w-full ${mobile ? "" : "max-w-[320px]"}`}>
       <div className="panel flex h-9 items-center gap-2 px-3">
         <Icon name="search" size={15} className="shrink-0 text-ink-faint" />
         <input
@@ -66,11 +73,15 @@ function SearchBox() {
           }}
           onFocus={() => setOpen(true)}
           onBlur={() => setTimeout(() => setOpen(false), 120)}
+          enterKeyHint="search"
           onKeyDown={(e) => {
             if (e.key === "ArrowDown") setCursor((c) => Math.min(c + 1, results.length - 1));
             else if (e.key === "ArrowUp") setCursor((c) => Math.max(c - 1, 0));
             else if (e.key === "Enter" && results[cursor]) choose(results[cursor].id);
-            else if (e.key === "Escape") input.current?.blur();
+            else if (e.key === "Escape") {
+              input.current?.blur();
+              onClose?.();
+            }
             else return;
             e.preventDefault();
             e.stopPropagation();
@@ -79,11 +90,17 @@ function SearchBox() {
           aria-label="Search objects"
           className="min-w-0 flex-1 bg-transparent text-[14px] text-ink placeholder:text-ink-faint focus:outline-none"
         />
-        <kbd className="rounded border border-line px-1.5 text-[11px] text-ink-faint">/</kbd>
+        {mobile ? (
+          <button type="button" className="btn -mr-2 !h-8 !px-2" onClick={onClose} aria-label="Close search">
+            <Icon name="close" size={14} />
+          </button>
+        ) : (
+          <kbd className="rounded border border-line px-1.5 text-[11px] text-ink-faint">/</kbd>
+        )}
       </div>
 
       {open && results.length > 0 && (
-        <ul className="panel thin-scroll animate-panel-in absolute inset-x-0 top-11 max-h-96 overflow-y-auto p-1" role="listbox">
+        <ul className={`panel thin-scroll animate-panel-in absolute inset-x-0 top-11 overflow-y-auto p-1 ${mobile ? "max-h-[60dvh]" : "max-h-96"}`} role="listbox">
           {results.map((o, i) => (
             <li key={o.id} role="option" aria-selected={i === cursor}>
               <button
@@ -91,7 +108,7 @@ function SearchBox() {
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => choose(o.id)}
                 onMouseEnter={() => setCursor(i)}
-                className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left ${i === cursor ? "bg-white/[0.07]" : ""}`}
+                className={`flex w-full items-center gap-2.5 rounded-md px-2.5 text-left ${mobile ? "py-2.5" : "py-1.5"} ${i === cursor ? "bg-white/[0.07]" : ""}`}
               >
                 <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: o.accent }} />
                 <span className="flex-1 truncate text-[14px] text-ink">{o.name}</span>
@@ -105,13 +122,14 @@ function SearchBox() {
   );
 }
 
-const LEVELS: { level: ViewLevel; label: string; short: string }[] = [
-  { level: "system", label: "Solar System", short: "Solar" },
-  { level: "interstellar", label: "Stars & Galaxy", short: "Stars" },
-  { level: "cosmic", label: "Universe", short: "Universe" },
+const LEVELS: { level: ViewLevel; label: string; short: string; tiny: string }[] = [
+  { level: "system", label: "Solar System", short: "Solar", tiny: "Solar" },
+  { level: "interstellar", label: "Stars & Galaxy", short: "Stars", tiny: "Stars" },
+  { level: "cosmic", label: "Universe", short: "Universe", tiny: "Cosmos" },
 ];
 
-function LevelSwitch() {
+function LevelSwitch({ compact = false }: { compact?: boolean }) {
+  const tab = `btn !h-7 ${compact ? "!px-2 !text-[13px]" : "!px-2.5"}`;
   const level = useViewStore((s) => s.level);
   return (
     <div className="panel flex h-9 items-center p-0.5" role="tablist" aria-label="Scale">
@@ -121,22 +139,28 @@ function LevelSwitch() {
           type="button"
           role="tab"
           aria-selected={level === l.level}
-          className="btn !h-7 !px-2.5"
+          className={tab}
           data-on={level === l.level}
           onClick={() => {
             selectObject(null);
             useViewStore.getState().goTo(l.level);
           }}
         >
-          <span className="hidden xl:inline">{l.label}</span>
-          <span className="xl:hidden">{l.short}</span>
+          {compact ? (
+            l.tiny
+          ) : (
+            <>
+              <span className="hidden xl:inline">{l.label}</span>
+              <span className="xl:hidden">{l.short}</span>
+            </>
+          )}
         </button>
       ))}
       <button
         type="button"
         role="tab"
         aria-selected={level === "scale"}
-        className="btn !h-7 !px-2.5"
+        className={tab}
         data-on={level === "scale"}
         title="Size comparison: from a neutron star to TON 618"
         onClick={() => {
@@ -191,7 +215,97 @@ function SoundButton() {
   );
 }
 
+/** Phone: one slim row — voyages, levels, search, and everything else behind a menu. */
+function MobileTopBar() {
+  const [searching, setSearching] = useState(false);
+  const [menu, setMenu] = useState(false);
+  const flyHome = useCameraStore((s) => s.flyHome);
+  const level = useViewStore((s) => s.level);
+  const count = useDiscoveryStore((s) => Object.keys(s.found).length);
+  const muted = useAudioStore((s) => s.muted);
+
+  useEffect(() => {
+    if (!menu) return;
+    const close = () => setMenu(false);
+    window.addEventListener("pointerdown", close);
+    return () => window.removeEventListener("pointerdown", close);
+  }, [menu]);
+
+  const item = "flex w-full items-center gap-3 rounded-md px-3 py-3 text-left text-[15px] text-ink active:bg-white/[0.08]";
+  const run = (fn: () => void) => () => {
+    setMenu(false);
+    fn();
+  };
+
+  return (
+    <header className="safe-top pointer-events-none fixed inset-x-0 top-0 z-20 px-2 pt-2">
+      {searching ? (
+        <SearchBox mobile onClose={() => setSearching(false)} />
+      ) : (
+        <div className="flex items-center justify-between gap-1.5">
+          <button type="button" className="voyage-button pointer-events-auto !h-9 !px-2.5" onClick={() => useMissionStore.getState().openPicker()} aria-label="Voyages">
+            <Icon name="rocket" size={16} />
+          </button>
+          <div className="pointer-events-auto">
+            <LevelSwitch compact />
+          </div>
+          <div className="pointer-events-auto flex items-center gap-1.5">
+            <button type="button" className="panel btn !h-9 !px-2.5" onClick={() => setSearching(true)} aria-label="Search">
+              <Icon name="search" size={16} />
+            </button>
+            <div className="relative">
+              <button
+                type="button"
+                className="panel btn !h-9 !px-2.5"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={() => setMenu((m) => !m)}
+                aria-label="Menu"
+                aria-expanded={menu}
+              >
+                <Icon name="menu" size={16} />
+              </button>
+              {menu && (
+                <div className="panel animate-panel-in absolute top-11 right-0 w-56 p-1" onPointerDown={(e) => e.stopPropagation()}>
+                  {level !== "scale" && (
+                    <button
+                      type="button"
+                      className={item}
+                      onClick={run(() => {
+                        selectObject(null);
+                        flyHome();
+                      })}
+                    >
+                      <Icon name="home" size={16} /> Overview
+                    </button>
+                  )}
+                  <button type="button" className={item} onClick={run(() => useUiStore.getState().setBrowse(true))}>
+                    <Icon name="list" size={16} /> Browse objects
+                  </button>
+                  <button type="button" className={item} onClick={run(() => useUiStore.getState().toggleLogbook())}>
+                    <Icon name="book" size={16} /> Logbook
+                    <span className="ml-auto text-[13px] text-ink-faint tabular-nums">
+                      {count}/{TOTAL_DISCOVERABLE}
+                    </span>
+                  </button>
+                  <button type="button" className={item} onClick={() => useAudioStore.getState().toggleMute()}>
+                    <Icon name={muted ? "soundOff" : "sound"} size={16} /> {muted ? "Music off" : "Music on"}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </header>
+  );
+}
+
 export function TopBar() {
+  const mobile = useIsMobile();
+  return mobile ? <MobileTopBar /> : <DesktopTopBar />;
+}
+
+function DesktopTopBar() {
   const flyHome = useCameraStore((s) => s.flyHome);
   const level = useViewStore((s) => s.level);
   return (
