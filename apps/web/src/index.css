@@ -1,0 +1,226 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Orbitron", ui-sans-serif, system-ui, sans-serif;
+  --font-ui: "Rajdhani", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --color-void: #02040a;
+  --color-hud: #5fd0ff;
+  --color-hud-violet: #9b8cff;
+  --color-hud-amber: #ffb45a;
+  --color-hud-green: #5dffb0;
+  --color-ink: #d9ecff;
+  --color-ink-dim: #7f95b0;
+  --color-ink-faint: #4a5d75;
+  --color-line: rgb(95 208 255 / 0.16);
+
+  --animate-panel-in: panel-in 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-fade-in: fade-in 1.2s ease-out both;
+  --animate-blink: blink 1.6s steps(2, start) infinite;
+
+  @keyframes panel-in {
+    from {
+      opacity: 0;
+      transform: translateX(24px);
+      filter: blur(6px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+      filter: none;
+    }
+  }
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes blink {
+    to {
+      visibility: hidden;
+    }
+  }
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    margin: 0;
+    overflow: hidden;
+    background: var(--color-void);
+    color: var(--color-ink);
+    font-family: var(--font-ui);
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection {
+    background: rgb(95 208 255 / 0.3);
+  }
+  button {
+    cursor: pointer;
+  }
+  :focus-visible {
+    outline: 1px solid var(--color-hud);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  /* Glass HUD panel with chamfered corners. */
+  .hud-panel {
+    position: relative;
+    background: linear-gradient(180deg, rgb(10 22 42 / 0.66), rgb(3 9 20 / 0.58));
+    border: 1px solid var(--color-line);
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.04),
+      0 24px 60px rgb(0 0 0 / 0.45);
+    clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
+  }
+  .hud-panel::before,
+  .hud-panel::after {
+    content: "";
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    pointer-events: none;
+    border-color: var(--color-hud);
+    opacity: 0.8;
+  }
+  .hud-panel::before {
+    top: 5px;
+    left: 5px;
+    border-top: 1px solid;
+    border-left: 1px solid;
+    transform: skewX(0);
+  }
+  .hud-panel::after {
+    right: 5px;
+    bottom: 5px;
+    border-right: 1px solid;
+    border-bottom: 1px solid;
+  }
+
+  .hud-kicker {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--color-ink-dim);
+  }
+
+  .hud-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 34px;
+    min-width: 34px;
+    padding: 0 10px;
+    border: 1px solid var(--color-line);
+    background: rgb(95 208 255 / 0.04);
+    color: var(--color-ink);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    transition:
+      background 0.2s,
+      border-color 0.2s,
+      color 0.2s,
+      box-shadow 0.2s;
+  }
+  .hud-button:hover {
+    background: rgb(95 208 255 / 0.12);
+    border-color: rgb(95 208 255 / 0.5);
+    box-shadow: 0 0 18px rgb(95 208 255 / 0.18);
+  }
+  .hud-button[data-on="true"] {
+    color: var(--color-void);
+    background: var(--color-hud);
+    border-color: var(--color-hud);
+    box-shadow: 0 0 22px rgb(95 208 255 / 0.45);
+  }
+  .hud-button:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    box-shadow: none;
+  }
+
+  .hud-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(95 208 255 / 0.25) transparent;
+  }
+
+  /* In-scene object labels (rendered through drei <Html>). */
+  .body-label {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    transform: translate(10px, -50%);
+    padding: 2px 4px;
+    background: none;
+    border: 0;
+    white-space: nowrap;
+    font-family: var(--font-display);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: color-mix(in srgb, var(--accent) 65%, white);
+    opacity: 0.72;
+    pointer-events: auto;
+    user-select: none;
+    transition:
+      opacity 0.3s,
+      text-shadow 0.3s;
+  }
+  .body-label__tick {
+    width: 6px;
+    height: 6px;
+    border: 1px solid var(--accent);
+    transform: rotate(45deg);
+    transition:
+      background 0.3s,
+      box-shadow 0.3s;
+  }
+  .body-label:hover,
+  .body-label[data-active="true"] {
+    opacity: 1;
+    text-shadow: 0 0 12px var(--accent);
+  }
+  .body-label[data-active="true"] .body-label__tick,
+  .body-label:hover .body-label__tick {
+    background: var(--accent);
+    box-shadow: 0 0 10px var(--accent);
+  }
+
+  .scale-label {
+    display: block;
+    transform: translate(4px, -50%);
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    color: rgb(58 168 255 / 0.45);
+    white-space: nowrap;
+    user-select: none;
+  }
+
+  /* Scanline texture laid over the whole HUD. */
+  .scanlines {
+    background: repeating-linear-gradient(
+      to bottom,
+      rgb(255 255 255 / 0.018) 0,
+      rgb(255 255 255 / 0.018) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+  }
+}
