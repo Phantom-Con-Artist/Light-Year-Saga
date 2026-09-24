@@ -1,9 +1,24 @@
+# Dependencies
 node_modules/
+
+# Production build artifacts
 dist/
+
+# Local env & config
 *.local
 .env
 .env.*
 !.env.example
+
+# Deployment platforms
+.vercel/
+.netlify/
+
+# Editor & OS files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
 
 # API credentials — never commit
 nasa_api
