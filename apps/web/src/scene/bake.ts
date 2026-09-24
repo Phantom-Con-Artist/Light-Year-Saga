@@ -39,7 +39,7 @@ function seedFromId(id: string): number {
 function bakeSurface(
   gl: WebGLRenderer,
   id: string,
-  visual: VisualDefinition,
+  visual: Pick<VisualDefinition, "style" | "colorA" | "colorB">,
   width: number,
 ): WebGLRenderTarget {
   const target = new WebGLRenderTarget(width, width / 2, {
@@ -95,6 +95,21 @@ export function getBakedSurface(gl: WebGLRenderer, obj: SpaceObject): WebGLRende
   if (!target) {
     target = bakeSurface(gl, obj.id, obj.visual, bakeWidthFor(obj.type, obj.visual.style));
     cache.set(obj.id, target);
+  }
+  return target;
+}
+
+/** Bake (and cache) a surface for a body outside the Solar System catalogue. */
+export function getBakedCustom(
+  gl: WebGLRenderer,
+  key: string,
+  visual: Pick<VisualDefinition, "style" | "colorA" | "colorB">,
+  width = 1024,
+): WebGLRenderTarget {
+  let target = cache.get(key);
+  if (!target) {
+    target = bakeSurface(gl, key, visual, width);
+    cache.set(key, target);
   }
   return target;
 }

@@ -6,6 +6,10 @@ import { useViewStore, type ViewLevel } from "../state/viewStore";
 import { buildSearchIndex, search } from "./searchIndex";
 import { useCameraStore } from "../state/cameraStore";
 import { isLive, useTimeStore } from "../state/timeStore";
+import { useMissionStore } from "../state/missionStore";
+import { TOTAL_DISCOVERABLE, useDiscoveryStore } from "../state/discoveryStore";
+import { useUiStore } from "../state/uiStore";
+import { useAudioStore } from "../audio/audioStore";
 import { Icon } from "./Icon";
 
 function Brand() {
@@ -15,7 +19,7 @@ function Brand() {
         <span className="absolute h-5 w-5 rounded-full border border-white/25" />
         <span className="h-2 w-2 rounded-full bg-[#ffc861]" />
       </span>
-      <span className="text-[15px] font-semibold tracking-tight text-ink">Light Year Saga</span>
+      <span className="hidden text-[15px] font-semibold tracking-tight text-ink sm:inline">Light Year Saga</span>
     </div>
   );
 }
@@ -49,7 +53,7 @@ function SearchBox() {
   };
 
   return (
-    <div className="pointer-events-auto relative w-full max-w-[340px]">
+    <div className="pointer-events-auto relative w-full max-w-[320px]">
       <div className="panel flex h-9 items-center gap-2 px-3">
         <Icon name="search" size={15} className="shrink-0 text-ink-faint" />
         <input
@@ -71,7 +75,7 @@ function SearchBox() {
             e.preventDefault();
             e.stopPropagation();
           }}
-          placeholder="Search planets, stars…"
+          placeholder="Search planets, stars, galaxies…"
           aria-label="Search objects"
           className="min-w-0 flex-1 bg-transparent text-[14px] text-ink placeholder:text-ink-faint focus:outline-none"
         />
@@ -79,7 +83,7 @@ function SearchBox() {
       </div>
 
       {open && results.length > 0 && (
-        <ul className="panel thin-scroll animate-panel-in absolute inset-x-0 top-11 max-h-80 overflow-y-auto p-1" role="listbox">
+        <ul className="panel thin-scroll animate-panel-in absolute inset-x-0 top-11 max-h-96 overflow-y-auto p-1" role="listbox">
           {results.map((o, i) => (
             <li key={o.id} role="option" aria-selected={i === cursor}>
               <button
@@ -87,9 +91,7 @@ function SearchBox() {
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => choose(o.id)}
                 onMouseEnter={() => setCursor(i)}
-                className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left ${
-                  i === cursor ? "bg-white/[0.07]" : ""
-                }`}
+                className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left ${i === cursor ? "bg-white/[0.07]" : ""}`}
               >
                 <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: o.accent }} />
                 <span className="flex-1 truncate text-[14px] text-ink">{o.name}</span>
@@ -103,9 +105,10 @@ function SearchBox() {
   );
 }
 
-const LEVELS: { level: ViewLevel; label: string }[] = [
-  { level: "system", label: "Solar System" },
-  { level: "interstellar", label: "Stars & Galaxy" },
+const LEVELS: { level: ViewLevel; label: string; short: string }[] = [
+  { level: "system", label: "Solar System", short: "Solar" },
+  { level: "interstellar", label: "Stars & Galaxy", short: "Stars" },
+  { level: "cosmic", label: "Universe", short: "Universe" },
 ];
 
 function LevelSwitch() {
@@ -125,9 +128,24 @@ function LevelSwitch() {
             useViewStore.getState().goTo(l.level);
           }}
         >
-          {l.label}
+          <span className="hidden xl:inline">{l.label}</span>
+          <span className="xl:hidden">{l.short}</span>
         </button>
       ))}
+      <button
+        type="button"
+        role="tab"
+        aria-selected={level === "scale"}
+        className="btn !h-7 !px-2.5"
+        data-on={level === "scale"}
+        title="Size comparison: from a neutron star to TON 618"
+        onClick={() => {
+          selectObject(null);
+          useViewStore.getState().goTo("scale");
+        }}
+      >
+        Size
+      </button>
     </div>
   );
 }
@@ -138,10 +156,38 @@ function ClockBadge() {
   const label = live ? "Live" : paused ? "Paused" : "Simulated";
   const tone = live ? "bg-live" : paused ? "bg-warn" : "bg-accent";
   return (
-    <div className="panel flex h-9 items-center gap-2 px-3 text-[13px] text-ink-dim">
+    <div className="panel hidden h-9 items-center gap-2 px-3 text-[13px] text-ink-dim 2xl:flex">
       <span className={`h-1.5 w-1.5 rounded-full ${tone}`} />
       {label}
     </div>
+  );
+}
+
+function LogbookButton() {
+  const count = useDiscoveryStore((s) => Object.keys(s.found).length);
+  return (
+    <button type="button" className="panel btn !h-9" onClick={() => useUiStore.getState().toggleLogbook()} title="Your logbook of discoveries">
+      <Icon name="book" size={15} />
+      <span className="tabular-nums">
+        {count}
+        <span className="text-ink-faint">/{TOTAL_DISCOVERABLE}</span>
+      </span>
+    </button>
+  );
+}
+
+function SoundButton() {
+  const muted = useAudioStore((s) => s.muted);
+  return (
+    <button
+      type="button"
+      className="panel btn !h-9 !px-2.5"
+      onClick={() => useAudioStore.getState().toggleMute()}
+      title={muted ? "Unmute music" : "Mute music"}
+      aria-label={muted ? "Unmute" : "Mute"}
+    >
+      <Icon name={muted ? "soundOff" : "sound"} size={15} />
+    </button>
   );
 }
 
@@ -149,26 +195,34 @@ export function TopBar() {
   const flyHome = useCameraStore((s) => s.flyHome);
   const level = useViewStore((s) => s.level);
   return (
-    <header className="pointer-events-none fixed inset-x-0 top-0 z-20 flex flex-wrap items-center justify-between gap-3 p-4 md:flex-nowrap">
+    <header className="pointer-events-none fixed inset-x-0 top-0 z-20 flex flex-wrap items-center justify-between gap-2 p-4 lg:flex-nowrap">
       <Brand />
-      <div className="order-last flex w-full justify-center md:order-none md:w-auto md:flex-1">
+      <div className="order-last flex w-full justify-center lg:order-none lg:w-auto lg:flex-1">
         <SearchBox />
       </div>
-      <div className="pointer-events-auto flex items-center gap-2">
-        <LevelSwitch />
-        <button
-          type="button"
-          className="panel btn !h-9"
-          onClick={() => {
-            selectObject(null);
-            flyHome();
-          }}
-          title="System overview (H)"
-        >
-          <Icon name="home" size={15} />
-          <span className="hidden sm:inline">Overview</span>
+      <div className="pointer-events-auto flex flex-wrap items-center justify-end gap-2">
+        <button type="button" className="voyage-button" onClick={() => useMissionStore.getState().openPicker()} title="Guided voyages">
+          <Icon name="rocket" size={15} />
+          Voyages
         </button>
-        {level === "system" && <ClockBadge />}
+        <LevelSwitch />
+        {level !== "scale" && (
+          <button
+            type="button"
+            className="panel btn !h-9 !px-2.5"
+            onClick={() => {
+              selectObject(null);
+              flyHome();
+            }}
+            title="Overview (H)"
+            aria-label="Overview"
+          >
+            <Icon name="home" size={15} />
+          </button>
+        )}
+        <LogbookButton />
+        <SoundButton />
+        {(level === "system" || level === "focus") && <ClockBadge />}
       </div>
     </header>
   );

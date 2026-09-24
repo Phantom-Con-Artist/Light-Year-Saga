@@ -80,7 +80,7 @@ export function temperatureFromBV(bv: number): number {
 }
 
 /** Approximate blackbody colour (linear RGB, 0–1) for a temperature in K. */
-function blackbodyRGB(tempK: number): [number, number, number] {
+export function blackbodyRGB(tempK: number): [number, number, number] {
   const t = Math.min(40000, Math.max(1000, tempK)) / 100;
   let r: number, g: number, b: number;
   if (t <= 66) {

@@ -19,7 +19,7 @@ export function Sun({ obj }: { obj: SpaceObject }) {
       new ShaderMaterial({
         vertexShader: surfaceVertex,
         fragmentShader: sunFragment,
-        uniforms: { uMap: { value: getBakedSurface(gl, obj).texture } },
+        uniforms: { uMap: { value: getBakedSurface(gl, obj).texture }, uBoost: { value: 1.6 } },
         toneMapped: false,
       }),
     [gl, obj],

@@ -6,6 +6,9 @@ import { useTimeStore } from "../state/timeStore";
 import { useViewStore } from "../state/viewStore";
 import { SolarSystemScene } from "./SolarSystemScene";
 import { InterstellarScene } from "./interstellar/InterstellarScene";
+import { CosmicScene } from "./cosmic/CosmicScene";
+import { FocusScene } from "./focus/FocusScene";
+import { ScaleScene } from "./scale/ScaleScene";
 
 /** Advances the shared simulation clock. Mounted first so bodies read a fresh time. */
 function ClockDriver() {
@@ -19,6 +22,7 @@ export function SpaceScene() {
   // Start at native-ish resolution and step down if the frame rate drops.
   const [dpr, setDpr] = useState(MAX_DPR);
   const level = useViewStore((s) => s.level);
+  const focusId = useViewStore((s) => s.focusId);
 
   return (
     <Canvas
@@ -35,7 +39,11 @@ export function SpaceScene() {
       />
       <color attach="background" args={["#000000"]} />
       <ClockDriver />
-      {level === "system" ? <SolarSystemScene /> : <InterstellarScene />}
+      {level === "system" && <SolarSystemScene />}
+      {level === "interstellar" && <InterstellarScene />}
+      {level === "cosmic" && <CosmicScene />}
+      {level === "focus" && <FocusScene key={focusId ?? "none"} />}
+      {level === "scale" && <ScaleScene />}
     </Canvas>
   );
 }

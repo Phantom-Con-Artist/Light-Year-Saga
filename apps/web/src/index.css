@@ -220,3 +220,211 @@
     box-shadow: 0 0 0 3px rgb(255 200 97 / 0.25);
   }
 }
+
+@layer components {
+  /* Curated objects (nebulae, black holes, galaxies, exoplanets). */
+  .catalog-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    translate: 8px -50%;
+    padding: 1px 4px;
+    white-space: nowrap;
+    font-size: 12px;
+    font-weight: 500;
+    color: color-mix(in srgb, var(--accent) 55%, white);
+    text-shadow: 0 1px 3px rgb(0 0 0 / 0.9);
+    user-select: none;
+  }
+  .catalog-label__dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    border: 1px solid var(--accent);
+  }
+  .catalog-label:hover,
+  .catalog-label[data-active="true"] {
+    color: #fff;
+  }
+  .catalog-label[data-active="true"] .catalog-label__dot {
+    background: var(--accent);
+  }
+
+  /* Scale references in close-ups ("Earth's orbit", "Sun (to scale)"). */
+  .ref-label {
+    translate: -50% -140%;
+    white-space: nowrap;
+    font-size: 11px;
+    color: rgb(170 190 225 / 0.8);
+    text-shadow: 0 1px 3px rgb(0 0 0 / 0.9);
+    user-select: none;
+  }
+
+  .scale-lineup-label {
+    translate: -50% 10px;
+    white-space: nowrap;
+    font-size: 12px;
+    font-weight: 500;
+    color: rgb(255 255 255 / 0.75);
+    text-shadow: 0 1px 3px rgb(0 0 0 / 0.9);
+  }
+  .scale-lineup-label:hover {
+    color: #fff;
+  }
+
+  .visit-button {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 36px;
+    border-radius: 9px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #06131f;
+    background: linear-gradient(180deg, #a8d6ff, #7cbcf5);
+    transition: filter 0.15s;
+  }
+  .visit-button:hover {
+    filter: brightness(1.08);
+  }
+
+  .voyage-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 36px;
+    padding: 0 14px;
+    border-radius: 12px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #1b1206;
+    background: linear-gradient(180deg, #ffd88a, #f2b457);
+    box-shadow: 0 6px 24px rgb(242 180 87 / 0.25);
+    transition: filter 0.15s;
+  }
+  .voyage-button:hover {
+    filter: brightness(1.07);
+  }
+
+  .mission-card {
+    text-align: left;
+    padding: 14px 16px;
+    border-radius: 12px;
+    border: 1px solid var(--color-line);
+    background: linear-gradient(160deg, color-mix(in srgb, var(--accent) 10%, transparent), transparent 60%);
+    transition:
+      border-color 0.15s,
+      transform 0.15s;
+  }
+  .mission-card:hover {
+    border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+    transform: translateY(-1px);
+  }
+
+  .toast {
+    padding: 10px 14px;
+    border-radius: 12px;
+    background: var(--color-panel);
+    border: 1px solid var(--color-line);
+    color: var(--color-ink);
+    box-shadow: 0 8px 30px rgb(0 0 0 / 0.4);
+  }
+  .toast--discovery {
+    border-color: rgb(143 255 193 / 0.35);
+  }
+  .toast--rank {
+    border-color: rgb(255 200 97 / 0.5);
+  }
+  .toast--mission {
+    border-color: rgb(201 184 255 / 0.5);
+  }
+
+  .scale-slider {
+    accent-color: var(--color-accent);
+  }
+
+  /* ----------------------------------------------------------- cockpit */
+  .cockpit-reticle {
+    position: fixed;
+    left: 50%;
+    top: 46%;
+    width: 64px;
+    height: 64px;
+    translate: -50% -50%;
+    z-index: 16;
+    pointer-events: none;
+    background:
+      linear-gradient(var(--accent), var(--accent)) top left / 12px 1px no-repeat,
+      linear-gradient(var(--accent), var(--accent)) top left / 1px 12px no-repeat,
+      linear-gradient(var(--accent), var(--accent)) top right / 12px 1px no-repeat,
+      linear-gradient(var(--accent), var(--accent)) top right / 1px 12px no-repeat,
+      linear-gradient(var(--accent), var(--accent)) bottom left / 12px 1px no-repeat,
+      linear-gradient(var(--accent), var(--accent)) bottom left / 1px 12px no-repeat,
+      linear-gradient(var(--accent), var(--accent)) bottom right / 12px 1px no-repeat,
+      linear-gradient(var(--accent), var(--accent)) bottom right / 1px 12px no-repeat;
+    opacity: 0.55;
+  }
+  .cockpit-badge {
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+  }
+  .cockpit-panel {
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: linear-gradient(180deg, rgb(20 24 34 / 0.94), rgb(10 12 18 / 0.96));
+    border: 1px solid rgb(255 255 255 / 0.07);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.04),
+      0 10px 40px rgb(0 0 0 / 0.5);
+  }
+  .cockpit-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 34px;
+    padding: 0 14px;
+    border-radius: 9px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #0b0e14;
+    background: var(--accent);
+    opacity: 0.85;
+    transition: opacity 0.2s;
+  }
+  .cockpit-primary[data-ready="true"] {
+    opacity: 1;
+    box-shadow: 0 0 22px color-mix(in srgb, var(--accent) 45%, transparent);
+  }
+  .aria-avatar {
+    position: relative;
+    width: 34px;
+    height: 34px;
+    border-radius: 999px;
+    background: radial-gradient(circle, color-mix(in srgb, var(--accent) 80%, white) 0 22%, transparent 24%);
+    border: 1px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  }
+  .aria-avatar span {
+    position: absolute;
+    inset: -5px;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+    animation: aria-pulse 2.4s ease-out infinite;
+  }
+  @keyframes aria-pulse {
+    from {
+      transform: scale(0.8);
+      opacity: 0.9;
+    }
+    to {
+      transform: scale(1.35);
+      opacity: 0;
+    }
+  }
+}

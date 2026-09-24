@@ -1,15 +1,15 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { Matrix4, Vector4 } from "three";
 import { starId, starName, type StarCatalog } from "../../data/stars";
 import { selectObject, useSelectionStore } from "../../state/selectionStore";
 import { apparentMagFromCamera, starVisibility } from "./visibility";
+import { usePickProvider } from "../common/picking";
 
 const MAX_LABELS = 22;
 const LABEL_W = 110;
 const LABEL_H = 18;
 const PICK_RADIUS_PX = 12;
-const CLICK_SLOP_PX = 5;
 
 interface Projected {
   index: number;
@@ -20,8 +20,8 @@ interface Projected {
 
 /**
  * DOM layer over the star field: names for the brightest named stars (with
- * overlap culling), a ring on the selected star, and click/hover picking done
- * in screen space — far cheaper than raycasting 40k points.
+ * overlap culling), a ring on the selected star, and a screen-space pick
+ * provider — far cheaper than raycasting 40k points.
  */
 export function StarOverlay({ catalog }: { catalog: StarCatalog }) {
   const gl = useThree((s) => s.gl);
@@ -109,41 +109,16 @@ export function StarOverlay({ catalog }: { catalog: StarCatalog }) {
     return best;
   };
 
-  // Click / hover picking on the canvas.
-  useEffect(() => {
-    const el = gl.domElement;
-    let down: { x: number; y: number } | null = null;
-    let lastHover = 0;
-    const local = (e: PointerEvent) => {
-      const r = el.getBoundingClientRect();
-      return { x: e.clientX - r.left, y: e.clientY - r.top };
-    };
-    const onDown = (e: PointerEvent) => (down = local(e));
-    const onUp = (e: PointerEvent) => {
-      if (!down) return;
-      const p = local(e);
-      const moved = Math.hypot(p.x - down.x, p.y - down.y);
-      down = null;
-      if (moved > CLICK_SLOP_PX) return;
-      const hit = pick(p.x, p.y);
-      if (hit !== null) selectObject(starId(catalog, hit));
-    };
-    const onMove = (e: PointerEvent) => {
-      if (e.buttons || performance.now() - lastHover < 80) return;
-      lastHover = performance.now();
-      const p = local(e);
-      el.style.cursor = pick(p.x, p.y) !== null ? "pointer" : "";
-    };
-    el.addEventListener("pointerdown", onDown);
-    el.addEventListener("pointerup", onUp);
-    el.addEventListener("pointermove", onMove);
-    return () => {
-      el.removeEventListener("pointerdown", onDown);
-      el.removeEventListener("pointerup", onUp);
-      el.removeEventListener("pointermove", onMove);
-      el.style.cursor = "";
-    };
-  });
+  // Stars take part in the shared screen-space picking.
+  usePickProvider(
+    useCallback(
+      (x: number, y: number) => {
+        const i = pick(x, y);
+        return i === null ? null : { id: starId(catalog, i), score: 0 };
+      },
+      [catalog, size],
+    ),
+  );
 
   const v4 = useRef(new Vector4());
   const placed = useRef<Projected[]>([]);

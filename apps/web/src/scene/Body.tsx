@@ -41,6 +41,8 @@ export function Body({ obj }: { obj: SpaceObject }) {
           uAtmo: { value: new Color(visual.atmosphere ?? "#000000") },
           uHasAtmo: { value: visual.atmosphere ? 1 : 0 },
           uHighlight: { value: 0 },
+          uLightPos: { value: new Vector3() },
+          uEmissive: { value: new Color(0, 0, 0) },
         },
       }),
     [gl, obj, visual.atmosphere],

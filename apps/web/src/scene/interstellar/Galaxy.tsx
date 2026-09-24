@@ -50,7 +50,7 @@ const LAYERS: [number, number][] = [
 
 let bakedTarget: WebGLRenderTarget | null = null;
 
-function bakeGalaxy(gl: WebGLRenderer): WebGLRenderTarget {
+export function bakeGalaxy(gl: WebGLRenderer): WebGLRenderTarget {
   if (bakedTarget) return bakedTarget;
   const size = Math.min(2048, gl.capabilities.maxTextureSize);
   const target = new WebGLRenderTarget(size, size, {
@@ -145,6 +145,8 @@ void main() {
   gl_PointSize = clamp(px, 1.0, 2.6);
   // Conserve light below a pixel; keep close-up clouds from reading as snow.
   vAlpha = uOpacity * min(1.0, px * px) * 0.5 / (1.0 + max(px - 2.6, 0.0) * 0.08);
+  // Illustrative clouds vanish up close, where they'd read as snow.
+  vAlpha *= smoothstep(1500.0, 9000.0, -mv.z);
   vColor = aColor;
 }
 `;

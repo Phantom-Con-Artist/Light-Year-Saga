@@ -1,5 +1,5 @@
 import { SOLAR_SYSTEM } from "../data/solarSystem";
-import { DEEP_SKY } from "../data/deepSky";
+import { ALL_EXOPLANETS, CATALOG, CATALOG_KIND_LABEL } from "../data/catalog";
 import { starDistanceLy, starId, starName, type StarCatalog } from "../data/stars";
 import { formatNumber } from "./format";
 
@@ -23,22 +23,30 @@ export function buildSearchIndex(catalog: StarCatalog | null): SearchEntry[] {
       accent: o.visual.accent,
       keywords: `${o.id} ${o.type} ${o.classification}`.toLowerCase(),
     })),
-    ...DEEP_SKY.map((o) => ({
+    ...CATALOG.filter((o) => o.id !== "milky-way-cosmic").map((o) => ({
       id: o.id,
       name: o.name,
-      detail: o.classification,
-      accent: "#c9b8ff",
-      keywords: `${o.id} ${o.type} ${o.classification}`.toLowerCase(),
+      detail: CATALOG_KIND_LABEL[o.kind],
+      accent: o.accent,
+      keywords: `${o.id} ${o.kind} ${o.classification} ${o.keywords ?? ""}`.toLowerCase(),
+    })),
+    ...ALL_EXOPLANETS.map(({ planet, system }) => ({
+      id: planet.id,
+      name: planet.name,
+      detail: `Exoplanet · ${system.name}`,
+      accent: "#8fffc1",
+      keywords: `${planet.id} exoplanet planet ${planet.style} ${system.name}`.toLowerCase(),
     })),
   ];
   if (catalog) {
     for (const i of catalog.named) {
       if (catalog.meta.hyg[i] === 0) continue; // the Sun is already listed
       const m = catalog.meta;
+      const d = starDistanceLy(catalog, i);
       entries.push({
         id: starId(catalog, i),
         name: starName(catalog, i),
-        detail: `Star · ${formatNumber(starDistanceLy(catalog, i), starDistanceLy(catalog, i) < 100 ? 1 : 0)} ly`,
+        detail: `Star · ${formatNumber(d, d < 100 ? 1 : 0)} ly`,
         accent: STAR_ACCENT,
         keywords: `${m.designation[i]} ${m.hip[i] ? `hip ${m.hip[i]}` : ""} ${m.spect[i]} star`.toLowerCase(),
       });
@@ -50,7 +58,11 @@ export function buildSearchIndex(catalog: StarCatalog | null): SearchEntry[] {
 /** Ranked search; also resolves "HIP 12345" to any catalogue star, named or not. */
 export function search(entries: SearchEntry[], catalog: StarCatalog | null, query: string, limit = 12): SearchEntry[] {
   const q = query.trim().toLowerCase();
-  if (!q) return entries.slice(0, SOLAR_SYSTEM.length + 2);
+  if (!q) {
+    // A taste of everything when the box is empty.
+    const picks = ["earth", "saturn", "betelgeuse", "orion-nebula", "pillars-of-creation", "trappist-1", "andromeda", "ton-618", "bootes-void"];
+    return picks.map((id) => entries.find((e) => e.id === id || e.name.toLowerCase() === id)).filter((e): e is SearchEntry => !!e);
+  }
 
   const hip = q.match(/^hip\s*(\d+)$/);
   if (hip && catalog) {

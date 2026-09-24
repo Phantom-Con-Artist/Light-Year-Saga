@@ -124,12 +124,14 @@ uniform sampler2D uMap;
 uniform vec3 uAtmo;
 uniform float uHasAtmo;
 uniform float uHighlight;
+uniform vec3 uLightPos;
+uniform vec3 uEmissive;
 ${SURFACE_VARYINGS}
 
 void main() {
   vec3 col = texture2D(uMap, vUv).rgb;
   vec3 N = normalize(vWorldNormal);
-  vec3 L = normalize(-vWorldPos);
+  vec3 L = normalize(uLightPos - vWorldPos);
   vec3 V = normalize(cameraPosition - vWorldPos);
   float ndl = dot(N, L);
   float light = smoothstep(-0.12, 0.65, ndl);
@@ -139,7 +141,10 @@ void main() {
   vec3 atmo = uAtmo * rim * smoothstep(-0.35, 0.5, ndl) * uHasAtmo;
   vec3 hl = vec3(1.0) * rim * uHighlight * 0.25;
 
-  gl_FragColor = vec4(lit + atmo + hl, 1.0);
+  // Self-glow on the night side: lava oceans, white-hot gas giants.
+  vec3 glow = uEmissive * (1.0 - light) * (0.35 + 0.65 * (1.0 - dot(col, vec3(0.333))));
+
+  gl_FragColor = vec4(lit + atmo + hl + glow, 1.0);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }
@@ -147,6 +152,7 @@ void main() {
 
 export const sunFragment = /* glsl */ `
 uniform sampler2D uMap;
+uniform float uBoost;
 ${SURFACE_VARYINGS}
 
 void main() {
@@ -154,7 +160,7 @@ void main() {
   vec3 N = normalize(vWorldNormal);
   vec3 V = normalize(cameraPosition - vWorldPos);
   float limb = 0.6 + 0.4 * sqrt(max(dot(N, V), 0.0));
-  gl_FragColor = vec4(col * limb * 1.6, 1.0);
+  gl_FragColor = vec4(col * limb * uBoost, 1.0);
   #include <colorspace_fragment>
 }
 `;
