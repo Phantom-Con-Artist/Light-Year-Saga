@@ -41,11 +41,11 @@ const REAL_STAR_RADIUS_LY = 3_200;
 
 /** Stacked disk layers: height above the plane (ly) and weight. Gives the disk thickness edge-on. */
 const LAYERS: [number, number][] = [
-  [-700, 0.12],
-  [-300, 0.3],
-  [0, 1],
-  [300, 0.3],
-  [700, 0.12],
+  [-700, 0.07],
+  [-300, 0.16],
+  [0, 0.54],
+  [300, 0.16],
+  [700, 0.07],
 ];
 
 let bakedTarget: WebGLRenderTarget | null = null;
@@ -117,10 +117,15 @@ void main() {
   // Outer layers only carry the thick central bulge, not the thin disk.
   float r = length(vUv - 0.5) * 2.0;
   float bulgeOnly = mix(exp(-r / 0.12), 1.0, uThick);
-  // Soften when seen exactly edge-on, where stacked planes would read as hard lines.
-  float facing = abs(dot(normalize(cameraPosition - vWorldPos), vNormalW));
-  float edge = mix(0.35, 1.0, smoothstep(0.0, 0.25, facing));
-  gl_FragColor = vec4(col * uGain * uLayerWeight * bulgeOnly * edge, 1.0);
+  // Planes seen at grazing angles, or right next to the camera, would smear
+  // across the screen (e.g. when the camera sits inside the disk). Fade them.
+  vec3 toCam = cameraPosition - vWorldPos;
+  float facing = abs(dot(normalize(toCam), vNormalW));
+  float edge = mix(uThick * 0.2, 1.0, smoothstep(0.03, 0.35, facing));
+  float near = smoothstep(1500.0, 7000.0, length(toCam));
+  vec3 c = col * uGain * bulgeOnly * edge * near;
+  c = c / (1.0 + c * 0.35);   // gentle highlight roll-off so the core never clips to flat white
+  gl_FragColor = vec4(c * uLayerWeight, 1.0);
   #include <colorspace_fragment>
 }
 `;
@@ -135,10 +140,11 @@ varying float vAlpha;
 void main() {
   vec4 mv = modelViewMatrix * vec4(position, 1.0);
   gl_Position = projectionMatrix * mv;
-  float px = aSize * 220.0 * uScale / max(-mv.z, 1.0);
-  gl_PointSize = clamp(px, 1.0, 4.5);
-  // Conserve light when a cloud shrinks below a pixel.
-  vAlpha = uOpacity * min(1.0, px * px) * 0.8;
+  // ~150 ly cloud × focal length (~1087 px at 900 px tall, 45° fov) / distance.
+  float px = aSize * 163000.0 * uScale / max(-mv.z, 1.0);
+  gl_PointSize = clamp(px, 1.0, 2.6);
+  // Conserve light below a pixel; keep close-up clouds from reading as snow.
+  vAlpha = uOpacity * min(1.0, px * px) * 0.5 / (1.0 + max(px - 2.6, 0.0) * 0.08);
   vColor = aColor;
 }
 `;
@@ -239,7 +245,10 @@ export function Galaxy() {
     const dSun = camera.position.length();
     const opacity = galaxyOpacity(dSun);
     group.current.visible = opacity > 0.001;
-    for (const m of layerMaterials) m.uniforms.uGain.value = opacity * 1.5;
+    // Auto-exposure: dim the glow as the camera approaches the bright core.
+    const dCore = camera.position.distanceTo(GALACTIC_CENTRE);
+    const exposure = 0.14 + 0.86 * smoothstep(6_000, 80_000, dCore);
+    for (const m of layerMaterials) m.uniforms.uGain.value = opacity * 2.6 * exposure;
     const su = (sparkle.material as ShaderMaterial).uniforms;
     su.uOpacity.value = opacity;
     su.uScale.value = size.height / 900;

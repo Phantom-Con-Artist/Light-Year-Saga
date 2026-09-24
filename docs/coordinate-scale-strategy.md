@@ -57,9 +57,26 @@ obliquity (23.4393°), then looks up RA/Dec. The Milky Way and the stars therefo
 relative to the planets. The orientation was checked against the galactic centre, Crux/Carina, Polaris
 and the Magellanic Clouds.
 
+## Interstellar regime
+
+- **Units** are light-years. The Sun is at the origin, and the axes are the same ecliptic J2000 render axes as the Solar System view.
+- **Stars** are HYG equatorial xyz (pc), rotated EQJ→ECL with Astronomy Engine at build time and converted to ly.
+  They are not compressed: distances are true.
+- **Star brightness** is computed per frame in the vertex shader as `m = M + 5·log10(d_pc) − 5`, using the camera's
+  real position. The visibility limit starts at +6.5 near the Sun and is raised gradually with distance, like a
+  longer exposure.
+- **The galaxy** is modelled in galactocentric coordinates (IAU galactic axes, Sun at (−R₀, 0, z☉), R₀ = 26,670 ly).
+  Galactic→render is built from Astronomy Engine's GAL→EQJ→ECL rotations. The GC direction was checked at
+  RA 17h45.6m, Dec −28.9°.
+- **Hand-off:** real stars cover ~3,200 ly around the Sun, and the model's star clouds stay out of that sphere.
+  NASA's diffuse sky is only correct as seen from near the Sun, so it fades out between 600 and 5,000 ly. The galaxy
+  model fades in over 1,500–9,000 ly.
+- **Depth** is not used in this regime: everything is additive with depth testing off. That lets near/far span 1e-4
+  to 3e6 ly without precision problems.
+
 ## Later regimes (not yet built)
 
 - **Earth orbit** (Sprint 2): TLE/OMM → SGP4 (satellite.js) → geocentric position → a
   local compression like the Moon's.
-- **Deep space** (Sprint 4): RA/Dec on the celestial sphere. These objects are not given
-  fake orbital positions.
+- **Local Group / Local Universe:** Mly units, with galaxies at their real RA/Dec and distance (UNGC, 2MRS /
+  Cosmicflows-4). This would be a further level above the interstellar one.

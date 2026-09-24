@@ -85,7 +85,8 @@ export const DEEP_SKY: DeepSkyObject[] = [
       ["Shadow diameter", "~52 µas (EHT)"],
     ],
     position: GALACTIC_CENTRE.clone(),
-    framingLy: 14_000,
+    framingLy: 32_000,
+    viewDirection: galaxyView,
     sources: [GRAVITY_2019, EHT_2022],
   },
 ];
