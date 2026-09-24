@@ -1,29 +1,28 @@
-import { useMemo } from "react";
-import { useFrame } from "@react-three/fiber";
+import { useMemo, useRef } from "react";
+import { useFrame, useThree } from "@react-three/fiber";
 import { Billboard } from "@react-three/drei";
-import { AdditiveBlending, Color, ShaderMaterial } from "three";
+import { AdditiveBlending, Color, ShaderMaterial, type Mesh } from "three";
 import type { SpaceObject } from "../domain/types";
 import { selectObject, useSelectionStore } from "../state/selectionStore";
 import { getRenderRadius } from "./renderRegistry";
-import { coronaFragment, coronaVertex, sunFragment, worldVertex } from "./shaders";
+import { coronaFragment, coronaVertex, sunFragment, surfaceVertex } from "./shaders";
+import { getBakedSurface } from "./bake";
 import { BodyLabel } from "./BodyLabel";
 
 export function Sun({ obj }: { obj: SpaceObject }) {
+  const gl = useThree((s) => s.gl);
+  const surface = useRef<Mesh>(null!);
   const radius = getRenderRadius(obj.id);
 
   const surfaceMat = useMemo(
     () =>
       new ShaderMaterial({
-        vertexShader: worldVertex,
+        vertexShader: surfaceVertex,
         fragmentShader: sunFragment,
-        uniforms: {
-          uColorA: { value: new Color(obj.visual.colorA) },
-          uColorB: { value: new Color(obj.visual.colorB) },
-          uTime: { value: 0 },
-        },
+        uniforms: { uMap: { value: getBakedSurface(gl, obj).texture } },
         toneMapped: false,
       }),
-    [obj.visual],
+    [gl, obj],
   );
 
   const coronaMat = useMemo(
@@ -31,7 +30,7 @@ export function Sun({ obj }: { obj: SpaceObject }) {
       new ShaderMaterial({
         vertexShader: coronaVertex,
         fragmentShader: coronaFragment,
-        uniforms: { uColor: { value: new Color("#ffb45a") }, uTime: { value: 0 } },
+        uniforms: { uColor: { value: new Color("#ffb45a") } },
         blending: AdditiveBlending,
         transparent: true,
         depthWrite: false,
@@ -40,15 +39,15 @@ export function Sun({ obj }: { obj: SpaceObject }) {
     [],
   );
 
-  // Surface animation is cosmetic, so it runs on wall-clock time.
-  useFrame(({ clock }) => {
-    surfaceMat.uniforms.uTime.value = clock.elapsedTime;
-    coronaMat.uniforms.uTime.value = clock.elapsedTime;
+  // Slow cosmetic rotation on wall-clock time.
+  useFrame((_, delta) => {
+    surface.current.rotation.y += delta * 0.02;
   });
 
   return (
     <group>
       <mesh
+        ref={surface}
         scale={radius}
         material={surfaceMat}
         onClick={(e) => {
@@ -65,11 +64,11 @@ export function Sun({ obj }: { obj: SpaceObject }) {
           document.body.style.cursor = "";
         }}
       >
-        <sphereGeometry args={[1, 96, 64]} />
+        <sphereGeometry args={[1, 64, 48]} />
       </mesh>
       <Billboard>
         <mesh material={coronaMat} renderOrder={3} raycast={() => null}>
-          <planeGeometry args={[radius * 9, radius * 9]} />
+          <planeGeometry args={[radius * 8, radius * 8]} />
         </mesh>
       </Billboard>
       <BodyLabel obj={obj} radius={radius} />

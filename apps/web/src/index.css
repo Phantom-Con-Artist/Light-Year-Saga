@@ -1,34 +1,30 @@
 @import "tailwindcss";
 
 @theme {
-  --font-display: "Orbitron", ui-sans-serif, system-ui, sans-serif;
-  --font-ui: "Rajdhani", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 
-  --color-void: #02040a;
-  --color-hud: #5fd0ff;
-  --color-hud-violet: #9b8cff;
-  --color-hud-amber: #ffb45a;
-  --color-hud-green: #5dffb0;
-  --color-ink: #d9ecff;
-  --color-ink-dim: #7f95b0;
-  --color-ink-faint: #4a5d75;
-  --color-line: rgb(95 208 255 / 0.16);
+  --color-void: #000000;
+  --color-panel: rgb(16 18 24 / 0.86);
+  --color-ink: #e9edf3;
+  --color-ink-dim: #9aa4b2;
+  --color-ink-faint: #5d6674;
+  --color-line: rgb(255 255 255 / 0.08);
+  --color-accent: #8cc8ff;
+  --color-live: #6fe3a5;
+  --color-warn: #f2c26b;
 
-  --animate-panel-in: panel-in 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
-  --animate-fade-in: fade-in 1.2s ease-out both;
-  --animate-blink: blink 1.6s steps(2, start) infinite;
+  --animate-panel-in: panel-in 0.25s ease-out both;
+  --animate-fade-in: fade-in 0.8s ease-out both;
 
   @keyframes panel-in {
     from {
       opacity: 0;
-      transform: translateX(24px);
-      filter: blur(6px);
+      transform: translateY(6px);
     }
     to {
       opacity: 1;
       transform: none;
-      filter: none;
     }
   }
   @keyframes fade-in {
@@ -37,11 +33,6 @@
     }
     to {
       opacity: 1;
-    }
-  }
-  @keyframes blink {
-    to {
-      visibility: hidden;
     }
   }
 }
@@ -57,170 +48,175 @@
     overflow: hidden;
     background: var(--color-void);
     color: var(--color-ink);
-    font-family: var(--font-ui);
+    font-family: var(--font-sans);
+    font-size: 14px;
     -webkit-font-smoothing: antialiased;
-  }
-  ::selection {
-    background: rgb(95 208 255 / 0.3);
   }
   button {
     cursor: pointer;
   }
   :focus-visible {
-    outline: 1px solid var(--color-hud);
+    outline: 2px solid var(--color-accent);
     outline-offset: 2px;
   }
 }
 
 @layer components {
-  /* Glass HUD panel with chamfered corners. */
-  .hud-panel {
-    position: relative;
-    background: linear-gradient(180deg, rgb(10 22 42 / 0.66), rgb(3 9 20 / 0.58));
+  /* Flat panel. No backdrop-filter: blurring over a live WebGL canvas is expensive. */
+  .panel {
+    background: var(--color-panel);
     border: 1px solid var(--color-line);
-    backdrop-filter: blur(14px) saturate(140%);
-    -webkit-backdrop-filter: blur(14px) saturate(140%);
-    box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.04),
-      0 24px 60px rgb(0 0 0 / 0.45);
-    clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
-  }
-  .hud-panel::before,
-  .hud-panel::after {
-    content: "";
-    position: absolute;
-    width: 18px;
-    height: 18px;
-    pointer-events: none;
-    border-color: var(--color-hud);
-    opacity: 0.8;
-  }
-  .hud-panel::before {
-    top: 5px;
-    left: 5px;
-    border-top: 1px solid;
-    border-left: 1px solid;
-    transform: skewX(0);
-  }
-  .hud-panel::after {
-    right: 5px;
-    bottom: 5px;
-    border-right: 1px solid;
-    border-bottom: 1px solid;
+    border-radius: 12px;
+    box-shadow: 0 8px 30px rgb(0 0 0 / 0.35);
   }
 
-  .hud-kicker {
-    font-family: var(--font-mono);
-    font-size: 10px;
-    letter-spacing: 0.22em;
+  .label-caps {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: var(--color-ink-dim);
+    color: var(--color-ink-faint);
   }
 
-  .hud-button {
+  .btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 6px;
-    height: 34px;
-    min-width: 34px;
+    height: 32px;
+    min-width: 32px;
     padding: 0 10px;
-    border: 1px solid var(--color-line);
-    background: rgb(95 208 255 / 0.04);
-    color: var(--color-ink);
-    font-family: var(--font-mono);
-    font-size: 11px;
-    letter-spacing: 0.14em;
+    border-radius: 8px;
+    color: var(--color-ink-dim);
+    font-size: 13px;
+    font-weight: 500;
     transition:
-      background 0.2s,
-      border-color 0.2s,
-      color 0.2s,
-      box-shadow 0.2s;
+      background 0.15s,
+      color 0.15s;
   }
-  .hud-button:hover {
-    background: rgb(95 208 255 / 0.12);
-    border-color: rgb(95 208 255 / 0.5);
-    box-shadow: 0 0 18px rgb(95 208 255 / 0.18);
+  .btn:hover {
+    background: rgb(255 255 255 / 0.07);
+    color: var(--color-ink);
   }
-  .hud-button[data-on="true"] {
-    color: var(--color-void);
-    background: var(--color-hud);
-    border-color: var(--color-hud);
-    box-shadow: 0 0 22px rgb(95 208 255 / 0.45);
+  .btn[data-on="true"] {
+    background: rgb(255 255 255 / 0.12);
+    color: var(--color-ink);
   }
-  .hud-button:disabled {
+  .btn:disabled {
     opacity: 0.35;
     cursor: not-allowed;
-    box-shadow: none;
+    background: none;
   }
 
-  .hud-scroll {
+  .thin-scroll {
     scrollbar-width: thin;
-    scrollbar-color: rgb(95 208 255 / 0.25) transparent;
+    scrollbar-color: rgb(255 255 255 / 0.15) transparent;
   }
 
   /* In-scene object labels (rendered through drei <Html>). */
+  /* Screen labels are positioned via inline transform; "translate" offsets compose with it. */
   .body-label {
     display: flex;
     align-items: center;
-    gap: 7px;
-    transform: translate(10px, -50%);
+    gap: 6px;
+    translate: 8px -50%;
     padding: 2px 4px;
     background: none;
     border: 0;
     white-space: nowrap;
-    font-family: var(--font-display);
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 500;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    color: color-mix(in srgb, var(--accent) 65%, white);
-    opacity: 0.72;
+    color: rgb(255 255 255 / 0.62);
     pointer-events: auto;
     user-select: none;
     transition:
       opacity 0.3s,
-      text-shadow 0.3s;
+      color 0.2s;
   }
-  .body-label__tick {
-    width: 6px;
-    height: 6px;
-    border: 1px solid var(--accent);
-    transform: rotate(45deg);
-    transition:
-      background 0.3s,
-      box-shadow 0.3s;
+  .body-label__dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 999px;
+    background: var(--accent);
+    opacity: 0.8;
   }
   .body-label:hover,
   .body-label[data-active="true"] {
-    opacity: 1;
-    text-shadow: 0 0 12px var(--accent);
-  }
-  .body-label[data-active="true"] .body-label__tick,
-  .body-label:hover .body-label__tick {
-    background: var(--accent);
-    box-shadow: 0 0 10px var(--accent);
+    color: #fff;
   }
 
   .scale-label {
     display: block;
-    transform: translate(4px, -50%);
-    font-family: var(--font-mono);
-    font-size: 9px;
-    letter-spacing: 0.18em;
-    color: rgb(58 168 255 / 0.45);
+    translate: 4px -50%;
+    font-size: 10px;
+    color: rgb(255 255 255 / 0.22);
     white-space: nowrap;
     user-select: none;
   }
+}
 
-  /* Scanline texture laid over the whole HUD. */
-  .scanlines {
-    background: repeating-linear-gradient(
-      to bottom,
-      rgb(255 255 255 / 0.018) 0,
-      rgb(255 255 255 / 0.018) 1px,
-      transparent 1px,
-      transparent 3px
-    );
+@layer components {
+  /* Interstellar star overlay (imperative DOM, see StarOverlay.tsx). */
+  .star-overlay {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+  .star-label {
+    position: absolute;
+    top: 0;
+    left: 0;
+    padding: 1px 4px;
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+    color: rgb(255 255 255 / 0.6);
+    pointer-events: auto;
+    user-select: none;
+    will-change: transform;
+  }
+  .star-label:hover,
+  .star-label[data-active="true"] {
+    color: #fff;
+  }
+  .star-ring {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    border: 1px solid rgb(255 255 255 / 0.45);
+    will-change: transform;
+  }
+
+  .galaxy-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    translate: 8px -50%;
+    text-shadow: 0 1px 3px rgb(0 0 0 / 0.9);
+    white-space: nowrap;
+    font-size: 12px;
+    font-weight: 500;
+    color: rgb(255 255 255 / 0.75);
+    user-select: none;
+  }
+  .galaxy-label--structure {
+    translate: -50% -50%;
+    font-size: 11px;
+    font-weight: 400;
+    font-style: italic;
+    color: rgb(190 210 255 / 0.55);
+  }
+  .galaxy-label__dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 999px;
+    background: #ffc861;
+  }
+  .galaxy-label--sun .galaxy-label__dot {
+    box-shadow: 0 0 0 3px rgb(255 200 97 / 0.25);
   }
 }

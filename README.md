@@ -15,8 +15,8 @@ Other scripts: `npm run build`, `npm run typecheck`.
 
 ## Stack
 
-React 19 · TypeScript · Vite · three.js via react-three-fiber / drei · postprocessing ·
-Tailwind CSS v4 · Zustand · Astronomy Engine
+React 19 · TypeScript · Vite · three.js via react-three-fiber / drei · Tailwind CSS v4 ·
+Zustand · Astronomy Engine
 
 ## Controls
 
@@ -46,6 +46,12 @@ docs/          Architecture notes (see coordinate-scale-strategy.md)
 ```
 
 The planning documents are `space_explorer_project_plan.md` and `space_explorer_v1_tech_stack.md`.
+
+## Rendering notes
+
+- Planet and Sun surfaces are procedural. They are baked once into textures at startup (`scene/bake.ts`), so the per-frame shaders only do a texture lookup and lighting.
+- The sky is NASA/GSFC SVS [Deep Star Maps 2020](https://svs.gsfc.nasa.gov/4851) (Hipparcos-2, Tycho-2 and Gaia DR2), converted from EXR to `public/textures/milkyway_{4k,8k}.jpg` and oriented by true RA/Dec. The 8K version only loads on high-resolution displays.
+- There is no post-processing. Resolution drops automatically if the frame rate falls.
 
 ## Principles
 

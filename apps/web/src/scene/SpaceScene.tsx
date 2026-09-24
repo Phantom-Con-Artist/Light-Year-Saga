@@ -1,15 +1,11 @@
+import { useState } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { OrbitControls } from "@react-three/drei";
-import { Bloom, EffectComposer, Noise, ToneMapping, Vignette } from "@react-three/postprocessing";
-import { ToneMappingMode } from "postprocessing";
-import { SOLAR_SYSTEM } from "../data/solarSystem";
+import { PerformanceMonitor } from "@react-three/drei";
+import { ACESFilmicToneMapping } from "three";
 import { useTimeStore } from "../state/timeStore";
-import { Body } from "./Body";
-import { Sun } from "./Sun";
-import { OrbitPath } from "./OrbitPath";
-import { CameraRig } from "./CameraRig";
-import { SelectionReticle } from "./SelectionReticle";
-import { EclipticGrid, SkyDome } from "./Backdrop";
+import { useViewStore } from "../state/viewStore";
+import { SolarSystemScene } from "./SolarSystemScene";
+import { InterstellarScene } from "./interstellar/InterstellarScene";
 
 /** Advances the shared simulation clock. Mounted first so bodies read a fresh time. */
 function ClockDriver() {
@@ -17,47 +13,29 @@ function ClockDriver() {
   return null;
 }
 
+const MAX_DPR = Math.min(window.devicePixelRatio, 1.75);
+
 export function SpaceScene() {
+  // Start at native-ish resolution and step down if the frame rate drops.
+  const [dpr, setDpr] = useState(MAX_DPR);
+  const level = useViewStore((s) => s.level);
+
   return (
     <Canvas
+      dpr={dpr}
       camera={{ position: [0, 900, 1500], fov: 45, near: 0.05, far: 10_000 }}
-      dpr={[1, 2]}
-      gl={{ antialias: false, powerPreference: "high-performance" }}
+      gl={{ antialias: true, powerPreference: "high-performance", toneMapping: ACESFilmicToneMapping }}
     >
-      <color attach="background" args={["#010208"]} />
-      <ClockDriver />
-      <SkyDome />
-      <EclipticGrid />
-
-      {SOLAR_SYSTEM.map((obj) =>
-        obj.type === "star" ? (
-          <Sun key={obj.id} obj={obj} />
-        ) : (
-          <group key={obj.id}>
-            <OrbitPath obj={obj} />
-            <Body obj={obj} />
-          </group>
-        ),
-      )}
-
-      <SelectionReticle />
-      <OrbitControls
-        makeDefault
-        enableDamping
-        dampingFactor={0.07}
-        rotateSpeed={0.5}
-        zoomSpeed={0.9}
-        panSpeed={0.6}
-        maxDistance={1400}
+      <PerformanceMonitor
+        bounds={() => [45, 58]}
+        onDecline={() => setDpr((d) => Math.max(1, d - 0.25))}
+        onIncline={() => setDpr((d) => Math.min(MAX_DPR, d + 0.25))}
+        flipflops={4}
+        onFallback={() => setDpr(1)}
       />
-      <CameraRig />
-
-      <EffectComposer multisampling={4}>
-        <Bloom mipmapBlur intensity={1.15} luminanceThreshold={0.9} luminanceSmoothing={0.25} radius={0.75} />
-        <Noise opacity={0.03} />
-        <Vignette offset={0.28} darkness={0.72} />
-        <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
-      </EffectComposer>
+      <color attach="background" args={["#000000"]} />
+      <ClockDriver />
+      {level === "system" ? <SolarSystemScene /> : <InterstellarScene />}
     </Canvas>
   );
 }

@@ -1,5 +1,5 @@
 import { useMemo, useRef } from "react";
-import { useFrame, type ThreeEvent } from "@react-three/fiber";
+import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import {
   AdditiveBlending,
   BackSide,
@@ -10,34 +10,21 @@ import {
   type Group,
   type Mesh,
 } from "three";
-import type { SpaceObject, SurfaceStyle } from "../domain/types";
+import type { SpaceObject } from "../domain/types";
 import { useTimeStore } from "../state/timeStore";
 import { selectObject, useSelectionStore } from "../state/selectionStore";
 import { getRenderPosition, getRenderRadius, syncRenderPositions } from "./renderRegistry";
-import { atmosphereFragment, ringFragment, ringVertex, surfaceFragment, worldVertex } from "./shaders";
+import { atmosphereFragment, ringFragment, ringVertex, surfaceFragment, surfaceVertex } from "./shaders";
+import { getBakedSurface } from "./bake";
 import { BodyLabel } from "./BodyLabel";
-
-const STYLE_INDEX: Record<SurfaceStyle, number> = {
-  star: 0,
-  rocky: 0,
-  cloudy: 1,
-  terran: 2,
-  banded: 3,
-  ice: 4,
-};
 
 const ATMOSPHERE_SCALE = 1.08;
 /** Visual cap on spin so fast-forwarding doesn't strobe (rad per real second). */
 const MAX_SPIN_RATE = 0.9;
 const DEG = Math.PI / 180;
 
-function seedFromId(id: string): number {
-  let h = 0;
-  for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) % 997;
-  return h / 97;
-}
-
 export function Body({ obj }: { obj: SpaceObject }) {
+  const gl = useThree((s) => s.gl);
   const group = useRef<Group>(null!);
   const surface = useRef<Mesh>(null!);
   const lastSimTime = useRef<number | null>(null);
@@ -47,31 +34,28 @@ export function Body({ obj }: { obj: SpaceObject }) {
   const surfaceMat = useMemo(
     () =>
       new ShaderMaterial({
-        vertexShader: worldVertex,
+        vertexShader: surfaceVertex,
         fragmentShader: surfaceFragment,
         uniforms: {
-          uColorA: { value: new Color(visual.colorA) },
-          uColorB: { value: new Color(visual.colorB) },
+          uMap: { value: getBakedSurface(gl, obj).texture },
           uAtmo: { value: new Color(visual.atmosphere ?? "#000000") },
           uHasAtmo: { value: visual.atmosphere ? 1 : 0 },
-          uStyle: { value: STYLE_INDEX[visual.style] },
-          uSeed: { value: seedFromId(obj.id) },
           uHighlight: { value: 0 },
         },
       }),
-    [obj.id, visual],
+    [gl, obj, visual.atmosphere],
   );
 
   const atmosphereMat = useMemo(
     () =>
       visual.atmosphere
         ? new ShaderMaterial({
-            vertexShader: worldVertex,
+            vertexShader: surfaceVertex,
             fragmentShader: atmosphereFragment,
             uniforms: {
               uAtmo: { value: new Color(visual.atmosphere) },
               uLimb: { value: Math.sqrt(1 - 1 / (ATMOSPHERE_SCALE * ATMOSPHERE_SCALE)) },
-              uIntensity: { value: 1.6 },
+              uIntensity: { value: 1.2 },
             },
             side: BackSide,
             blending: AdditiveBlending,
@@ -152,19 +136,19 @@ export function Body({ obj }: { obj: SpaceObject }) {
           onPointerOver={onOver}
           onPointerOut={onOut}
         >
-          <sphereGeometry args={[1, 96, 64]} />
+          <sphereGeometry args={[1, 64, 48]} />
         </mesh>
         {ringMat && visual.rings && (
-          <mesh rotation={[-Math.PI / 2, 0, 0]} material={ringMat} renderOrder={2}>
+          <mesh rotation={[-Math.PI / 2, 0, 0]} material={ringMat} renderOrder={2} raycast={() => null}>
             <ringGeometry
-              args={[visual.rings.innerRadii * radius, visual.rings.outerRadii * radius, 256, 1]}
+              args={[visual.rings.innerRadii * radius, visual.rings.outerRadii * radius, 128, 1]}
             />
           </mesh>
         )}
       </group>
       {atmosphereMat && (
-        <mesh scale={radius * ATMOSPHERE_SCALE} material={atmosphereMat} renderOrder={1}>
-          <sphereGeometry args={[1, 64, 48]} />
+        <mesh scale={radius * ATMOSPHERE_SCALE} material={atmosphereMat} renderOrder={1} raycast={() => null}>
+          <sphereGeometry args={[1, 48, 32]} />
         </mesh>
       )}
       <BodyLabel obj={obj} radius={radius} />

@@ -7,6 +7,9 @@ import { TimeControls } from "./ui/TimeControls";
 import { useTimeStore } from "./state/timeStore";
 import { selectObject } from "./state/selectionStore";
 import { useCameraStore } from "./state/cameraStore";
+import { FADE_DURATION_MS, useViewStore } from "./state/viewStore";
+import { useStarStore } from "./data/stars";
+import { ScaleReadout } from "./ui/ScaleReadout";
 
 function useKeyboardShortcuts() {
   useEffect(() => {
@@ -49,38 +52,52 @@ function useKeyboardShortcuts() {
   }, []);
 }
 
-function ControlsHint() {
-  const hints = [
-    ["DRAG", "Orbit"],
-    ["SCROLL", "Zoom"],
-    ["R-DRAG", "Pan"],
-    ["ESC", "Release"],
-  ];
+/** Black cross-fade used when moving between view levels. */
+function TransitionOverlay() {
+  const fade = useViewStore((s) => s.fade);
   return (
-    <div className="animate-fade-in pointer-events-none fixed bottom-5 left-5 z-10 hidden flex-col gap-1.5 xl:flex">
-      {hints.map(([key, label]) => (
-        <div key={key} className="flex items-center gap-2 font-mono text-[9px] tracking-[0.2em] text-ink-faint">
-          <span className="w-14 text-hud/60">{key}</span>
-          {label.toUpperCase()}
-        </div>
-      ))}
+    <div
+      aria-hidden="true"
+      className="pointer-events-none fixed inset-0 z-30 bg-black"
+      style={{ opacity: fade, transition: `opacity ${FADE_DURATION_MS}ms ease` }}
+    />
+  );
+}
+
+function Credits() {
+  const level = useViewStore((s) => s.level);
+  return (
+    <div className="fixed bottom-4 left-4 z-10 hidden flex-col gap-0.5 text-[11px] text-ink-faint xl:flex">
+      <a href="https://svs.gsfc.nasa.gov/4851" target="_blank" rel="noreferrer" className="hover:text-ink-dim">
+        Sky: NASA/GSFC SVS Deep Star Maps 2020
+      </a>
+      {level === "interstellar" && (
+        <a href="https://github.com/astronexus/HYG-Database" target="_blank" rel="noreferrer" className="hover:text-ink-dim">
+          Stars: HYG Database v4.1 (CC BY-SA 4.0)
+        </a>
+      )}
     </div>
   );
 }
 
 export default function App() {
   useKeyboardShortcuts();
+  const level = useViewStore((s) => s.level);
+
+  // The star catalogue (~2 MB) also powers search, so fetch it right away.
+  useEffect(() => useStarStore.getState().load(), []);
+
   return (
     <>
       <div className="fixed inset-0">
         <SpaceScene />
       </div>
-      <div className="scanlines pointer-events-none fixed inset-0 z-[5]" />
       <TopBar />
       <Navigator />
       <Inspector />
-      <TimeControls />
-      <ControlsHint />
+      {level === "system" ? <TimeControls /> : <ScaleReadout />}
+      <Credits />
+      <TransitionOverlay />
     </>
   );
 }

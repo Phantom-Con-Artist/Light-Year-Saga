@@ -49,6 +49,14 @@ These affect appearance only and never feed displayed data:
 - **Axial tilt** is applied about a fixed scene axis. It isn't the true pole orientation (RA/Dec of the pole).
 - **Surfaces** are procedural shaders, not imagery.
 
+## Sky background
+
+The star map is equatorial plate carrée: RA 0h at the image centre, RA increasing to the left, north at the top.
+The sky shader rotates each scene direction from ecliptic to equatorial coordinates using the J2000
+obliquity (23.4393°), then looks up RA/Dec. The Milky Way and the stars therefore appear where they really are
+relative to the planets. The orientation was checked against the galactic centre, Crux/Carina, Polaris
+and the Magellanic Clouds.
+
 ## Later regimes (not yet built)
 
 - **Earth orbit** (Sprint 2): TLE/OMM → SGP4 (satellite.js) → geocentric position → a

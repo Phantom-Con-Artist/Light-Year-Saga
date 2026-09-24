@@ -1,5 +1,17 @@
 import type { ReactNode } from "react";
-import type { DataFreshness, SpaceObject } from "../domain/types";
+import type { DataFreshness, ExternalSource, SpaceObject } from "../domain/types";
+import { getDeepSky, type DeepSkyObject } from "../data/deepSky";
+import {
+  LY_PER_PC,
+  STAR_SOURCE,
+  apparentMagnitude,
+  isStarId,
+  luminositySolar,
+  starDistanceLy,
+  starName,
+  temperatureFromBV,
+  useStarStore,
+} from "../data/stars";
 import { getObject } from "../data/solarSystem";
 import { AU_KM } from "../astronomy/ephemeris";
 import { selectObject, useSelectionStore } from "../state/selectionStore";
@@ -13,43 +25,35 @@ import {
 } from "./format";
 import { Icon } from "./Icon";
 
-const FRESHNESS_TONE: Record<DataFreshness, string> = {
-  LIVE: "text-hud-green border-hud-green/40",
-  RECENT: "text-hud border-hud/40",
-  ARCHIVED: "text-hud-violet border-hud-violet/40",
-  STATIC: "text-ink-dim border-ink-dim/40",
-  COMPUTED: "text-hud-amber border-hud-amber/40",
+const FRESHNESS_LABEL: Record<DataFreshness, string> = {
+  LIVE: "Live",
+  RECENT: "Recent",
+  ARCHIVED: "Archived",
+  STATIC: "Reference",
+  COMPUTED: "Computed",
 };
 
-function Section({ title, children, aside }: { title: string; children: ReactNode; aside?: ReactNode }) {
+function Section({ title, children, note }: { title: string; children: ReactNode; note?: string }) {
   return (
-    <section className="border-t border-line px-5 py-4">
-      <div className="mb-3 flex items-center justify-between">
-        <h3 className="hud-kicker">{title}</h3>
-        {aside}
+    <section className="border-t border-line px-4 py-3.5">
+      <div className="mb-2.5 flex items-baseline justify-between">
+        <h3 className="label-caps">{title}</h3>
+        {note && <span className="text-[11px] text-ink-faint">{note}</span>}
       </div>
       {children}
     </section>
   );
 }
 
-function Stat({ label, value, unit, accent }: { label: string; value: string; unit?: string; accent?: string }) {
+function Stat({ label, value, unit }: { label: string; value: string; unit?: string }) {
   return (
     <div className="min-w-0">
-      <dt className="font-mono text-[9px] tracking-[0.2em] text-ink-faint uppercase">{label}</dt>
-      <dd className="mt-1 truncate font-mono text-[13px] text-ink tabular-nums" style={accent ? { color: accent } : undefined}>
+      <dt className="text-[12px] text-ink-faint">{label}</dt>
+      <dd className="mt-0.5 truncate text-[14px] text-ink tabular-nums">
         {value}
-        {unit && <span className="ml-1 text-[10px] text-ink-dim">{unit}</span>}
+        {unit && <span className="ml-1 text-[12px] text-ink-dim">{unit}</span>}
       </dd>
     </div>
-  );
-}
-
-function FreshnessTag({ freshness }: { freshness: DataFreshness }) {
-  return (
-    <span className={`border px-1.5 py-px font-mono text-[9px] tracking-[0.2em] ${FRESHNESS_TONE[freshness]}`}>
-      {freshness}
-    </span>
   );
 }
 
@@ -58,30 +62,21 @@ function Telemetry({ obj }: { obj: SpaceObject }) {
   if (!t) return null;
   const moon = obj.type === "moon";
   return (
-    <dl className="grid grid-cols-2 gap-x-4 gap-y-3.5">
+    <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
       {t.sunDistanceAu !== undefined && !moon && (
-        <Stat label="Sun distance" value={formatNumber(t.sunDistanceAu, 4)} unit="AU" accent={obj.visual.accent} />
+        <Stat label="From Sun" value={formatNumber(t.sunDistanceAu, 3)} unit="AU" />
       )}
       {t.earthDistanceAu !== undefined &&
         (moon ? (
-          <Stat
-            label="Earth distance"
-            value={formatNumber(t.earthDistanceAu * AU_KM, 0)}
-            unit="km"
-            accent={obj.visual.accent}
-          />
+          <Stat label="From Earth" value={formatNumber(t.earthDistanceAu * AU_KM, 0)} unit="km" />
         ) : (
-          <Stat label="Earth distance" value={formatNumber(t.earthDistanceAu, 4)} unit="AU" />
+          <Stat label="From Earth" value={formatNumber(t.earthDistanceAu, 3)} unit="AU" />
         ))}
       {t.lightTimeFromEarthS !== undefined && (
-        <Stat label="Light time ← Earth" value={formatLightTime(t.lightTimeFromEarthS)} />
+        <Stat label="Light time from Earth" value={formatLightTime(t.lightTimeFromEarthS)} />
       )}
       {t.orbitalSpeedKmS !== undefined && (
-        <Stat
-          label={moon ? "Speed vs Earth" : "Orbital speed"}
-          value={formatNumber(t.orbitalSpeedKmS, 2)}
-          unit="km/s"
-        />
+        <Stat label={moon ? "Speed around Earth" : "Orbital speed"} value={formatNumber(t.orbitalSpeedKmS, 2)} unit="km/s" />
       )}
     </dl>
   );
@@ -89,25 +84,24 @@ function Telemetry({ obj }: { obj: SpaceObject }) {
 
 function Physical({ obj }: { obj: SpaceObject }) {
   const p = obj.physical;
-  const rows: [string, string, string?][] = [["Mean radius", formatNumber(p.meanRadiusKm, 1), "km"]];
+  const rows: [string, string, string?][] = [["Radius", formatNumber(p.meanRadiusKm, 0), "km"]];
   if (p.massKg) rows.push(["Mass", formatScientific(p.massKg), "kg"]);
-  if (p.surfaceGravityMs2) rows.push(["Surface gravity", formatNumber(p.surfaceGravityMs2, 1), "m/s²"]);
+  if (p.surfaceGravityMs2) rows.push(["Gravity", formatNumber(p.surfaceGravityMs2, 1), "m/s²"]);
   if (p.rotationPeriodHours)
     rows.push([
-      p.rotationPeriodHours < 0 ? "Rotation (retro)" : "Rotation period",
+      p.rotationPeriodHours < 0 ? "Day (retrograde)" : "Day length",
       formatDuration(p.rotationPeriodHours),
     ]);
-  if (p.orbitalPeriodDays) rows.push(["Orbital period", formatDays(p.orbitalPeriodDays)]);
-  if (p.axialTiltDeg !== undefined) rows.push(["Axial tilt", formatNumber(p.axialTiltDeg, 2), "°"]);
+  if (p.orbitalPeriodDays) rows.push(["Year length", formatDays(p.orbitalPeriodDays)]);
+  if (p.axialTiltDeg !== undefined) rows.push(["Axial tilt", `${formatNumber(p.axialTiltDeg, 1)}°`]);
   if (p.meanTemperatureK)
     rows.push([
-      obj.type === "star" ? "Photosphere" : "Mean temp",
-      `${formatNumber(p.meanTemperatureK)} K`,
+      obj.type === "star" ? "Surface temp" : "Mean temp",
       `${formatNumber(p.meanTemperatureK - 273.15)} °C`,
     ]);
 
   return (
-    <dl className="grid grid-cols-2 gap-x-4 gap-y-3.5">
+    <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
       {rows.map(([label, value, unit]) => (
         <Stat key={label} label={label} value={value} unit={unit} />
       ))}
@@ -115,103 +109,176 @@ function Physical({ obj }: { obj: SpaceObject }) {
   );
 }
 
-const DATA_LINKS = ["Missions", "Observations", "Imagery"];
+function Sources({ sources, footnote }: { sources: ExternalSource[]; footnote?: string }) {
+  return (
+    <Section title="Sources">
+      <ul className="space-y-1.5">
+        {sources.map((s) => (
+          <li key={s.name} className="flex items-baseline justify-between gap-3 text-[13px]">
+            {s.url ? (
+              <a href={s.url} target="_blank" rel="noreferrer" className="inline-flex min-w-0 items-center gap-1 truncate text-ink-dim hover:text-ink">
+                {s.provider} — {s.name}
+                <Icon name="external" size={11} className="shrink-0" />
+              </a>
+            ) : (
+              <span className="truncate text-ink-dim">
+                {s.provider} — {s.name}
+              </span>
+            )}
+            <span className="shrink-0 text-[11px] text-ink-faint">{FRESHNESS_LABEL[s.freshness]}</span>
+          </li>
+        ))}
+      </ul>
+      {footnote && <p className="mt-3 text-[12px] text-ink-faint">{footnote}</p>}
+    </Section>
+  );
+}
+
+function Shell({ id, title, subtitle, children }: { id: string; title: string; subtitle: ReactNode; children: ReactNode }) {
+  return (
+    <aside
+      key={id}
+      aria-label={`${title} details`}
+      className="panel thin-scroll animate-panel-in pointer-events-auto fixed inset-x-3 bottom-32 z-20 max-h-[40vh] overflow-y-auto md:inset-x-auto md:top-20 md:right-4 md:bottom-auto md:max-h-[calc(100vh-12rem)] md:w-[320px]"
+    >
+      <header className="flex items-start justify-between gap-3 px-4 pt-4 pb-3.5">
+        <div className="min-w-0">
+          <h2 className="text-[20px] font-semibold tracking-tight text-ink">{title}</h2>
+          <p className="mt-0.5 text-[13px] text-ink-dim">{subtitle}</p>
+        </div>
+        <button type="button" className="btn -mt-1 -mr-1.5" onClick={() => selectObject(null)} aria-label="Close (Esc)">
+          <Icon name="close" size={14} />
+        </button>
+      </header>
+      {children}
+    </aside>
+  );
+}
+
+const DATA_FOOTNOTE = "Missions, observations and imagery will appear here once NASA/MAST data is connected.";
+
+function BodyInspector({ obj }: { obj: SpaceObject }) {
+  const parent = getObject(obj.parentId);
+  return (
+    <Shell id={obj.id} title={obj.name} subtitle={<>{obj.classification}{parent && ` · orbits ${parent.name}`}</>}>
+      <Section title="Position" note="at simulation time">
+        <Telemetry obj={obj} />
+      </Section>
+      <Section title="Physical">
+        <Physical obj={obj} />
+      </Section>
+      <Section title="About">
+        <p className="text-[14px] leading-relaxed text-ink-dim">{obj.description}</p>
+      </Section>
+      <Sources sources={obj.sources} footnote={DATA_FOOTNOTE} />
+    </Shell>
+  );
+}
+
+function DeepSkyInspector({ obj }: { obj: DeepSkyObject }) {
+  return (
+    <Shell id={obj.id} title={obj.name} subtitle={obj.classification}>
+      <Section title="Facts">
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
+          {obj.facts.map(([label, value]) => (
+            <Stat key={label} label={label} value={value} />
+          ))}
+        </dl>
+      </Section>
+      <Section title="About">
+        <p className="text-[14px] leading-relaxed text-ink-dim">{obj.description}</p>
+        {obj.visualNote && <p className="mt-2.5 text-[12px] leading-relaxed text-ink-faint">{obj.visualNote}</p>}
+      </Section>
+      <Sources sources={obj.sources} />
+    </Shell>
+  );
+}
+
+const SPECTRAL_CLASS: Record<string, string> = {
+  O: "Blue",
+  B: "Blue-white",
+  A: "White",
+  F: "Yellow-white",
+  G: "Yellow",
+  K: "Orange",
+  M: "Red",
+};
+
+function describeSpectrum(spect: string): string {
+  const letter = spect.trim().match(/[OBAFGKM]/)?.[0];
+  if (!letter) return spect || "Unknown";
+  const lum = spect.match(/(Ia|Ib|III|II|IV|V)/)?.[0];
+  const size = lum
+    ? { Ia: "supergiant", Ib: "supergiant", II: "bright giant", III: "giant", IV: "subgiant", V: "main-sequence" }[lum]
+    : "";
+  return `${SPECTRAL_CLASS[letter]}${size ? ` ${size}` : ""} · ${spect}`;
+}
+
+function formatLuminosity(l: number): string {
+  if (l >= 1000) return `${formatNumber(l, 0)} L☉`;
+  if (l >= 1) return `${formatNumber(l, 1)} L☉`;
+  return `${l.toPrecision(2)} L☉`;
+}
+
+function StarInspector({ id }: { id: string }) {
+  const catalog = useStarStore((s) => s.catalog);
+  const i = catalog?.indexById.get(id);
+  if (!catalog || i === undefined) return null;
+  const m = catalog.meta;
+  const name = starName(catalog, i);
+  const dLy = starDistanceLy(catalog, i);
+  const absMag = catalog.absMag[i];
+  const appMag = apparentMagnitude(absMag, dLy);
+  const tempK = temperatureFromBV(catalog.colorIndex[i]);
+  const ids = [
+    m.proper[i] && m.designation[i],
+    m.hip[i] ? `HIP ${m.hip[i]}` : "",
+    m.hd[i] ? `HD ${m.hd[i]}` : "",
+    m.gliese[i],
+  ].filter(Boolean);
+  const lightYear = new Date().getUTCFullYear() - Math.round(dLy);
+
+  return (
+    <Shell id={id} title={name} subtitle={describeSpectrum(m.spect[i])}>
+      <Section title="Position">
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
+          <Stat label="From Sun" value={formatNumber(dLy, dLy < 100 ? 2 : 0)} unit="ly" />
+          <Stat label="From Sun" value={formatNumber(dLy / LY_PER_PC, dLy < 100 ? 2 : 0)} unit="pc" />
+        </dl>
+        <p className="mt-3 text-[12px] leading-relaxed text-ink-faint">
+          {lightYear > 0
+            ? `The light we see tonight left this star around ${lightYear < 1000 ? `AD ${lightYear}` : lightYear}.`
+            : `The light we see tonight left this star about ${formatNumber(dLy, 0)} years ago.`}
+        </p>
+      </Section>
+      <Section title="Brightness">
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
+          <Stat label="Apparent mag (Earth)" value={formatNumber(appMag, 2)} />
+          <Stat label="Absolute mag" value={formatNumber(absMag, 2)} />
+          <Stat label="Luminosity" value={formatLuminosity(luminositySolar(absMag))} />
+          <Stat label="Surface temp (≈ from B−V)" value={`${formatNumber(Math.round(tempK / 50) * 50)} K`} />
+        </dl>
+        <p className="mt-3 text-[12px] text-ink-faint">
+          {appMag <= 6 ? "Visible to the naked eye from a dark site." : appMag <= 9 ? "Needs binoculars." : "Needs a telescope."}
+        </p>
+      </Section>
+      {ids.length > 0 && (
+        <Section title="Catalogue IDs">
+          <p className="text-[13px] text-ink-dim">{ids.join(" · ")}</p>
+        </Section>
+      )}
+      <Sources sources={[{ ...STAR_SOURCE, freshness: "STATIC" }]} />
+    </Shell>
+  );
+}
 
 export function Inspector() {
   const selectedId = useSelectionStore((s) => s.selectedId);
-  const obj = getObject(selectedId);
-  if (!obj) return null;
-  const parent = getObject(obj.parentId);
-
-  return (
-    <aside
-      key={obj.id}
-      aria-label={`${obj.name} inspector`}
-      className="hud-panel hud-scroll animate-panel-in pointer-events-auto fixed inset-x-3 bottom-44 z-20 max-h-[38vh] overflow-y-auto md:inset-x-auto md:top-24 md:right-5 md:bottom-auto md:max-h-[calc(100vh-15rem)] md:w-[360px]"
-      style={{ ["--accent" as string]: obj.visual.accent }}
-    >
-      <header className="relative px-5 pt-5 pb-4">
-        <div
-          className="pointer-events-none absolute inset-x-0 top-0 h-28 opacity-25"
-          style={{ background: `radial-gradient(120% 100% at 0% 0%, ${obj.visual.accent}, transparent 70%)` }}
-        />
-        <div className="relative flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="hud-kicker flex items-center gap-2">
-              <span className="h-1.5 w-1.5 rotate-45" style={{ background: obj.visual.accent }} />
-              {obj.type}
-              {parent && <span className="text-ink-faint">· orbits {parent.name}</span>}
-            </div>
-            <h2
-              className="mt-2 font-display text-[26px] leading-none font-bold tracking-[0.14em] uppercase"
-              style={{ textShadow: `0 0 24px ${obj.visual.accent}66` }}
-            >
-              {obj.name}
-            </h2>
-            <p className="mt-2 font-ui text-[15px] font-medium text-ink-dim">{obj.classification}</p>
-          </div>
-          <button type="button" className="hud-button !h-8 !min-w-8 !px-0" onClick={() => selectObject(null)} aria-label="Close inspector (Esc)">
-            <Icon name="close" size={14} />
-          </button>
-        </div>
-        <div className="relative mt-3 flex items-center gap-3">
-          <code className="border border-line bg-hud/5 px-2 py-0.5 font-mono text-[10px] tracking-wider text-hud">
-            id:{obj.id}
-          </code>
-          <button type="button" className="hud-kicker flex items-center gap-1.5 hover:text-hud" onClick={() => selectObject(obj.id)}>
-            <Icon name="focus" size={12} /> Re-center
-          </button>
-        </div>
-      </header>
-
-      <Section title="Telemetry · sim time" aside={<FreshnessTag freshness="COMPUTED" />}>
-        <Telemetry obj={obj} />
-      </Section>
-
-      <Section title="Physical profile" aside={<FreshnessTag freshness="STATIC" />}>
-        <Physical obj={obj} />
-      </Section>
-
-      <Section title="Briefing">
-        <p className="font-ui text-[15px] leading-relaxed text-ink/85">{obj.description}</p>
-      </Section>
-
-      <Section title="Data links">
-        <div className="grid grid-cols-3 gap-2">
-          {DATA_LINKS.map((label) => (
-            <button key={label} type="button" disabled className="hud-button !h-auto flex-col !gap-1 py-2.5" title="Connects to NASA / MAST in a later sprint">
-              <span className="!tracking-[0.12em]">{label.toUpperCase()}</span>
-              <span className="text-[8px] tracking-[0.2em] text-hud-amber">OFFLINE</span>
-            </button>
-          ))}
-        </div>
-      </Section>
-
-      <Section title="Sources">
-        <ul className="space-y-2.5">
-          {obj.sources.map((s) => (
-            <li key={s.name} className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="font-mono text-[10px] tracking-[0.18em] text-ink-dim uppercase">{s.provider}</div>
-                {s.url ? (
-                  <a
-                    href={s.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-0.5 inline-flex items-center gap-1 font-ui text-[14px] text-ink/85 hover:text-hud"
-                  >
-                    {s.name}
-                    <Icon name="external" size={11} />
-                  </a>
-                ) : (
-                  <div className="mt-0.5 font-ui text-[14px] text-ink/85">{s.name}</div>
-                )}
-              </div>
-              <FreshnessTag freshness={s.freshness} />
-            </li>
-          ))}
-        </ul>
-      </Section>
-    </aside>
-  );
+  if (!selectedId) return null;
+  const body = getObject(selectedId);
+  if (body) return <BodyInspector key={body.id} obj={body} />;
+  const deep = getDeepSky(selectedId);
+  if (deep) return <DeepSkyInspector key={deep.id} obj={deep} />;
+  if (isStarId(selectedId)) return <StarInspector key={selectedId} id={selectedId} />;
+  return null;
 }

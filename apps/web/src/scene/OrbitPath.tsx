@@ -37,9 +37,10 @@ uniform float uOpacity;
 varying float vPhase;
 void main() {
   float behind = fract(uPhase - vPhase);
-  float trail = pow(1.0 - behind, 2.2);
-  float glow = 0.18 + 0.82 * trail;
+  float trail = pow(1.0 - behind, 3.0);
+  float glow = 0.25 + 0.75 * trail;
   gl_FragColor = vec4(uColor * glow * uOpacity, 1.0);
+  #include <colorspace_fragment>
 }
 `;
 
@@ -80,7 +81,7 @@ export function OrbitPath({ obj }: { obj: SpaceObject }) {
         uniforms: {
           uColor: { value: new Color(obj.visual.accent) },
           uPhase: { value: 0 },
-          uOpacity: { value: 0.5 },
+          uOpacity: { value: 0.35 },
         },
         transparent: true,
         blending: AdditiveBlending,
@@ -135,7 +136,7 @@ export function OrbitPath({ obj }: { obj: SpaceObject }) {
     }
     material.uniforms.uPhase.value = best / (n - 1);
 
-    const target = selected ? 1.6 : hovered ? 1.1 : 0.55;
+    const target = selected ? 0.9 : hovered ? 0.6 : 0.35;
     const u = material.uniforms.uOpacity;
     u.value += (target - u.value) * Math.min(1, delta * 6);
   });

@@ -2,14 +2,14 @@ import { create } from "zustand";
 
 /** Playback speeds, in simulated seconds per real second. */
 export const RATE_STEPS = [
-  { value: 1, label: "REAL TIME" },
-  { value: 60, label: "1 MIN / SEC" },
-  { value: 3_600, label: "1 HOUR / SEC" },
-  { value: 21_600, label: "6 HOURS / SEC" },
-  { value: 86_400, label: "1 DAY / SEC" },
-  { value: 604_800, label: "1 WEEK / SEC" },
-  { value: 2_592_000, label: "30 DAYS / SEC" },
-  { value: 31_557_600, label: "1 YEAR / SEC" },
+  { value: 1, label: "Real time" },
+  { value: 60, label: "1 min / s" },
+  { value: 3_600, label: "1 hour / s" },
+  { value: 21_600, label: "6 hours / s" },
+  { value: 86_400, label: "1 day / s" },
+  { value: 604_800, label: "1 week / s" },
+  { value: 2_592_000, label: "30 days / s" },
+  { value: 31_557_600, label: "1 year / s" },
 ] as const;
 
 const DEFAULT_RATE_INDEX = 4;

@@ -11,5 +11,10 @@
     "dev": "npm run dev -w @lys/web",
     "build": "npm run build -w @lys/web",
     "typecheck": "npm run typecheck -w @lys/web"
+  },
+  "devDependencies": {
+    "astronomy-engine": "^2.1.19",
+    "jpeg-js": "^0.4.4",
+    "three": "^0.186.1"
   }
 }

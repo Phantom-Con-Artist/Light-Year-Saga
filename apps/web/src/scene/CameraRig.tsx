@@ -1,7 +1,8 @@
 import { useEffect, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { Vector3 } from "three";
-import { getObject } from "../data/solarSystem";
+import { OBJECTS_BY_ID, getObject } from "../data/solarSystem";
+import { useViewStore } from "../state/viewStore";
 import { useSelectionStore } from "../state/selectionStore";
 import { useCameraStore } from "../state/cameraStore";
 import { getRenderPosition, getRenderRadius } from "./renderRegistry";
@@ -15,6 +16,8 @@ interface Controls {
 const FLIGHT_SECONDS = 1.8;
 const INTRO_SECONDS = 3.2;
 const HOME_DISTANCE = 400;
+/** Where the camera appears when arriving from the interstellar view. */
+const ENTRY_DISTANCE = 1350;
 const HOME_DIRECTION = new Vector3(0, 0.5, 1).normalize();
 const ORIGIN = new Vector3();
 
@@ -69,19 +72,23 @@ export function CameraRig() {
     controls.minDistance = id ? getRenderRadius(id) * 1.4 : 5;
   };
 
-  // Intro sweep from deep space.
+  // Intro: sweep in from deep space, or — when arriving from the interstellar
+  // view — continue along the same view direction.
   useEffect(() => {
     if (!controls) return;
-    camera.position.set(0, 900, 1500);
+    const carried = useViewStore.getState().carryDirection;
+    const dir = carried ?? new Vector3(0, 900, 1500).normalize();
+    camera.position.copy(dir).multiplyScalar(carried ? ENTRY_DISTANCE : 1750);
     controls.target.set(0, 0, 0);
-    startFlight(null, HOME_DISTANCE, HOME_DIRECTION, INTRO_SECONDS);
+    startFlight(null, HOME_DISTANCE, carried ?? HOME_DIRECTION, carried ? FLIGHT_SECONDS : INTRO_SECONDS);
   }, [controls]);
 
   useEffect(
     () =>
       useSelectionStore.subscribe((s, prev) => {
         if (s.focusRequest === prev.focusRequest) return;
-        if (s.selectedId) startFlight(s.selectedId, framingDistance(s.selectedId), null, FLIGHT_SECONDS);
+        if (s.selectedId && OBJECTS_BY_ID.has(s.selectedId))
+          startFlight(s.selectedId, framingDistance(s.selectedId), null, FLIGHT_SECONDS);
         else trackId.current = null;
       }),
     [controls],
