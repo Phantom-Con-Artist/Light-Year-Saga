@@ -20,6 +20,11 @@ import { useSelectionStore } from "../../state/selectionStore";
 import { useGraphicsStore } from "../../state/graphicsStore";
 import { isPointGalaxyId, pointGalaxyInfo, pointGalaxyPosition, type PointGalaxyInfo } from "../../data/cosmic/cosmicPoints";
 import { photoWeight } from "./SkyPhotos";
+import { shimmerChunk } from "../twinkle";
+
+/** Shared by every cloud material: updated once per frame. */
+const shimmerTime = { value: 0 };
+const shimmerStrength = { value: 0 };
 
 /**
  * Catalogued galaxies as procedural point clouds: stars of the bulge, disk
@@ -53,6 +58,8 @@ uniform mat4 uFrameView[SLOTS]; // unit disk (diameter 1, xy plane) → view spa
 uniform vec4 uStyle[SLOTS];     // style id, arms, tint (−1 cool … 1 warm), gain
 uniform float uFocal;
 uniform float uPixelRatio;
+uniform float uTime;
+uniform float uTwinkle;
 varying vec3 vColor;
 varying float vAlpha;
 varying float vSoft;
@@ -72,6 +79,21 @@ vec3 sphere() {
   float phi = rnd() * 6.28318530718;
   float q = sqrt(1.0 - u * u);
   return vec3(q * cos(phi), q * sin(phi), u);
+}
+
+${shimmerChunk}
+
+/**
+ * Isotropic 3D scatter with a solid core: a random direction times an
+ * exponential radius. (Three chained Box–Muller normals collapse to planes
+ * after D3D shader translation, so they're avoided.)
+ */
+vec3 gauss3() {
+  float u = rnd() * 2.0 - 1.0;
+  float phi = rnd() * 6.28318530718;
+  float q = sqrt(1.0 - u * u);
+  float r = -log(max(rnd(), 1e-7)) * 0.8;
+  return vec3(q * cos(phi), q * sin(phi), u) * r;
 }
 
 const vec3 OLD = vec3(1.0, 0.76, 0.5);
@@ -116,16 +138,25 @@ void main() {
   // Glow sprites follow the bulge, disk and arm light, so the structure carries into the haze.
   float gsel = kind == 0.0 ? rnd() : 1.0;
   bool glowBulge = kind == 0.0 && gsel < (style == 2 ? 1.0 : style == 7 || style == 3 ? 0.55 : 0.3);
-  bool glowDisk = kind == 0.0 && !glowBulge && gsel < (style == 7 || style == 3 ? 1.0 : 0.62);
+  // Irregulars have no disk: their glow follows the clumps instead (below).
+  bool irregular = style == 5 || style == 8;
+  bool glowDisk = kind == 0.0 && !glowBulge && !irregular && gsel < (style == 7 || style == 3 ? 1.0 : 0.62);
   if (kind == 1.0 || glowBulge) {
     float scale = style == 2 ? 0.075 : style == 3 ? 0.07 : style == 7 ? 0.06 : 0.04;
-    float squash = style == 2 ? 0.6 + 0.35 * fract(float(slot) * 0.618) : style == 3 ? 0.55 : 0.7;
+    float squash = style == 2 ? 0.6 + 0.35 * fract(float(slot) * 0.618) : style == 3 ? 0.55 : irregular ? 1.0 : 0.7;
     vec3 d = sphere();
     float r = min(expo(scale), 0.5);
     p = vec3(d.xy, d.z * squash) * r;
     if (style == 6) p.x += rnd() < 0.5 ? -0.18 : 0.18;        // two nuclei
-    if (style == 1 && rnd() < 0.5) p = vec3(gauss() * 0.1, gauss() * 0.025, gauss() * 0.02); // bar
+    if (style == 1 && rnd() < 0.5) p = gauss3() * vec3(0.1, 0.025, 0.02); // bar
     col = OLD;
+  } else if (kind == 0.0 && irregular) {
+    uint mine = rng;
+    rng = pcg(uint(floor(rnd() * 11.0)) + uint(slot) * 131u + 5u);
+    vec3 c = gauss3() * vec3(0.16, 0.11, 0.13);
+    rng = mine;
+    p = c + gauss3() * 0.05;
+    col = mix(YOUNG, DISK, 0.5);
   } else if (kind == 2.0 || glowDisk) {
     float r = truncExpo(0.0, style == 7 ? 0.1 : 0.14, 0.5);
     float phi = rnd() * 6.28318530718;
@@ -138,20 +169,21 @@ void main() {
       float r = 0.36 + gauss() * 0.025;
       p = vec3(cos(phi) * r, sin(phi) * r, gauss() * 0.01);
       col = YOUNG;
-    } else if (style == 5 || style == 8) {
+    } else if (irregular) {
+      // Clumpy and genuinely 3D (the SMC is even stretched along our line of sight).
       uint mine = rng;
-      rng = pcg(uint(floor(rnd() * 9.0)) + uint(slot) * 131u + 5u);
-      vec3 c = vec3(gauss() * 0.16, gauss() * 0.12, gauss() * 0.04);
+      rng = pcg(uint(floor(rnd() * 11.0)) + uint(slot) * 131u + 5u);
+      vec3 c = gauss3() * vec3(0.16, 0.11, 0.13);
       float w = 0.03 + rnd() * 0.05;
       rng = mine;
-      p = c + vec3(gauss(), gauss(), gauss() * 0.5) * w;
+      p = c + gauss3() * w;
       col = mix(YOUNG, DISK, rnd() * 0.5);
     } else if (style == 6) {
       float t = rnd();
       float side = rnd() < 0.5 ? -1.0 : 1.0;
       float th = t * 3.3;
       float r = 0.1 + t * 0.4;
-      p = vec3(side * (0.18 + cos(th) * r * 0.9), side * sin(th) * r, gauss() * 0.02) + vec3(gauss(), gauss(), gauss()) * (0.015 + 0.03 * t);
+      p = vec3(side * (0.18 + cos(th) * r * 0.9), side * sin(th) * r, gauss() * 0.02) + gauss3() * (0.015 + 0.03 * t);
       col = mix(YOUNG, DISK, t);
     } else {
       float r0 = style == 1 ? 0.1 : 0.05;
@@ -199,8 +231,9 @@ void main() {
     float coverage = clamp(dpx * dpx / float(PER) * 0.22, 0.04, 1.0);
     // The bulge packs a fifth of the points into a small patch: keep it from burning out.
     float packing = kind == 1.0 ? (style == 2 ? 0.4 : 0.3) : 1.0;
-    gl_PointSize = clamp(1.0 + bright * 1.4 * coverage, 1.0, 2.8) * uPixelRatio;
-    vAlpha = show * min(1.0, bright) * coverage * 0.8 * packing;
+    float sh = shimmer(uint(gl_VertexID) + uint(slot) * 131071u, uTime, uTwinkle);
+    gl_PointSize = clamp(1.0 + bright * 1.4 * coverage, 1.0, 2.8) * sqrt(sh) * uPixelRatio;
+    vAlpha = show * min(1.0, bright) * coverage * 0.8 * packing * sh;
   }
   vColor = col;
   if (vAlpha < 0.003) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
@@ -264,6 +297,8 @@ function makeCloud(count: number, per: number, frames: Matrix4[]): Cloud {
       uStyle: { value: styles },
       uFocal: focal,
       uPixelRatio: pixelRatio,
+      uTime: shimmerTime,
+      uTwinkle: shimmerStrength,
     },
     transparent: true,
     blending: AdditiveBlending,
@@ -315,9 +350,11 @@ interface GalaxyCloudsProps {
   gain?: (cameraPosition: Vector3) => number;
   /** Add a slot for the selected survey / modelled galaxy (Universe view). */
   pointSlot?: boolean;
+  /** Hand over to real photographs when seen from Earth (off in the Universe view: models only). */
+  photos?: boolean;
 }
 
-export function GalaxyClouds({ objects, unitScale, gain, pointSlot = false }: GalaxyCloudsProps) {
+export function GalaxyClouds({ objects, unitScale, gain, pointSlot = false, photos = true }: GalaxyCloudsProps) {
   const camera = useThree((s) => s.camera) as PerspectiveCamera;
   const particles = useGraphicsStore((g) => g.galaxyParticles);
   const budget = budgets(particles);
@@ -355,11 +392,14 @@ export function GalaxyClouds({ objects, unitScale, gain, pointSlot = false }: Ga
       c.focal.value = focal;
       c.pixelRatio.value = ratio;
     }
+    const gs = useGraphicsStore.getState();
+    shimmerTime.value = performance.now() / 1000;
+    shimmerStrength.value = gs.twinkle ? gs.twinkleStrength * 1.6 : 0;
     const g = gain ? gain(camera.position) : 1;
     for (const s of slots) {
       if (!s.id) continue;
       // Seen from Earth, the real photograph replaces the modelled galaxy.
-      s.style.w = g * (1 - photoWeight(s.id));
+      s.style.w = g * (photos ? 1 - photoWeight(s.id) : 1);
     }
     if (pointSlot) {
       const slot = slots[slots.length - 1];

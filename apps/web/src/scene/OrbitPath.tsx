@@ -116,6 +116,7 @@ export function OrbitPath({ obj }: { obj: SpaceObject }) {
     line.geometry.setAttribute("position", new BufferAttribute(geometry.positions, 3));
     line.geometry.setAttribute("aPhase", new BufferAttribute(geometry.phases, 1));
     line.geometry.setDrawRange(0, geometry.phases.length);
+    lastBest.current = -1;
   }, [line, geometry]);
 
   useEffect(
@@ -127,6 +128,7 @@ export function OrbitPath({ obj }: { obj: SpaceObject }) {
   );
 
   const probe = useMemo(() => new Vector3(), []);
+  const lastBest = useRef(-1);
   const resting = restingOpacity(obj);
 
   useFrame((_, delta) => {
@@ -162,18 +164,23 @@ export function OrbitPath({ obj }: { obj: SpaceObject }) {
     probe.copy(getRenderPosition(obj.id)).sub(group.current.position);
     const pos = geometry.positions;
     const n = pos.length / 3;
-    let best = 0;
-    let bestD = Infinity;
-    for (let i = 0; i < n; i++) {
-      const dx = pos[i * 3] - probe.x;
-      const dy = pos[i * 3 + 1] - probe.y;
-      const dz = pos[i * 3 + 2] - probe.z;
-      const d = dx * dx + dy * dy + dz * dz;
+    const d2 = (i: number) => (pos[i * 3] - probe.x) ** 2 + (pos[i * 3 + 1] - probe.y) ** 2 + (pos[i * 3 + 2] - probe.z) ** 2;
+    // A body moves a few samples per frame at most: search around last frame's answer,
+    // and scan the whole loop only at the start or after a time jump.
+    const prev = lastBest.current;
+    const local = prev >= 0 && prev < n;
+    let best = local ? prev : 0;
+    let bestD = local ? d2(prev) : Infinity;
+    for (let k = local ? -12 : 0; local ? k <= 12 : k < n; k++) {
+      const i = local ? (prev + k + n) % n : k;
+      const d = d2(i);
       if (d < bestD) {
         bestD = d;
         best = i;
       }
     }
+    // Stopped at the window's edge: probably lost track, rescan next frame.
+    lastBest.current = local && (best === (prev + 12) % n || best === (prev - 12 + n) % n) ? -1 : best;
     material.uniforms.uPhase.value = geometry.phases[best];
   });
 

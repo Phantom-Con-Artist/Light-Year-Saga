@@ -23,6 +23,8 @@ import { smoothstep } from "../interstellar/visibility";
 import { angularRaycast, rayFromScreen, type AngularHit } from "../common/pointRaycast";
 import { usePickProvider } from "../common/picking";
 import { ScreenLabel } from "../ScreenLabel";
+import { shimmerChunk } from "../twinkle";
+import { graphics } from "../../state/graphicsStore";
 
 const realVertex = /* glsl */ `
 attribute float aType;
@@ -36,8 +38,11 @@ uniform float uSelStruct;
 uniform float uSelSuper;
 uniform float uSelIndex;
 uniform vec3 uSuperColors[${SUPERCLUSTER_COLORS.length}];
+uniform float uTime;
+uniform float uTwinkle;
 varying vec3 vColor;
 varying float vAlpha;
+${shimmerChunk}
 
 void main() {
   vec4 mv = modelViewMatrix * vec4(position, 1.0);
@@ -79,8 +84,9 @@ void main() {
     a = 1.0;
     c = mix(c, vec3(1.0), 0.4);
   }
-  gl_PointSize = size * uPixelRatio;
-  vAlpha = a * uOpacity;
+  float sh = shimmer(uint(gl_VertexID), uTime, uTwinkle);
+  gl_PointSize = size * sqrt(sh) * uPixelRatio;
+  vAlpha = a * uOpacity * sh;
   vColor = c;
 }
 `;
@@ -96,6 +102,13 @@ void main() {
   #include <colorspace_fragment>
 }
 `;
+
+/** Shimmer follows the Twinkle setting (a visual effect, not data). */
+function syncShimmer(u: Record<string, { value: unknown }>) {
+  const g = graphics();
+  u.uTime.value = performance.now() / 1000;
+  u.uTwinkle.value = g.twinkle ? g.twinkleStrength * 1.6 : 0;
+}
 
 /** The rendered clouds, for picking. */
 const clouds: { real: Points | null; modelled: Points | null } = { real: null, modelled: null };
@@ -139,6 +152,8 @@ export function CosmicWeb() {
         uSelStruct: { value: -1 },
         uSelSuper: { value: -1 },
         uSelIndex: { value: -1 },
+        uTime: { value: 0 },
+        uTwinkle: { value: 0 },
         uSuperColors: { value: SUPERCLUSTER_COLORS.map((c) => new Color(c)) },
       },
       transparent: true,
@@ -174,6 +189,7 @@ export function CosmicWeb() {
     u.uSelStruct.value = sel?.structureIndex ?? -1;
     u.uSelSuper.value = sel?.superclusterIndex ?? -1;
     u.uSelIndex.value = selectedIndex("real");
+    syncShimmer(u);
   });
 
   return points ? <primitive object={points} /> : null;
@@ -189,8 +205,11 @@ uniform float uPixelRatio;
 uniform float uOpacity;
 uniform float uMark;
 uniform float uSelIndex;
+uniform float uTime;
+uniform float uTwinkle;
 varying vec3 vColor;
 varying float vAlpha;
+${shimmerChunk}
 
 void main() {
   vec4 mv = modelViewMatrix * vec4(position, 1.0);
@@ -219,8 +238,9 @@ void main() {
     a = 1.0;
     c = mix(c, vec3(1.0), 0.4);
   }
-  gl_PointSize = size * uPixelRatio;
-  vAlpha = a * uOpacity;
+  float sh = shimmer(uint(gl_VertexID) + 7777u, uTime, uTwinkle);
+  gl_PointSize = size * sqrt(sh) * uPixelRatio;
+  vAlpha = a * uOpacity * sh;
   vColor = c;
   if (vAlpha < 0.004) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
 }
@@ -255,6 +275,8 @@ export function ModelledGalaxies() {
         uOpacity: { value: 0 },
         uMark: { value: 0 },
         uSelIndex: { value: -1 },
+        uTime: { value: 0 },
+        uTwinkle: { value: 0 },
       },
       transparent: true,
       blending: AdditiveBlending,
@@ -288,6 +310,7 @@ export function ModelledGalaxies() {
     u.uOpacity.value += (target - u.uOpacity.value) * Math.min(1, delta * 2.5);
     u.uMark.value = state.markModelled ? 1 : 0;
     u.uSelIndex.value = selectedIndex("modelled");
+    syncShimmer(u);
     points.visible = u.uOpacity.value > 0.005;
   });
 

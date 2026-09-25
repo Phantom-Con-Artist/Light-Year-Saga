@@ -14,6 +14,7 @@ import { FlightRig, type RigTarget } from "../common/FlightRig";
 import { CatalogLayer } from "../common/CatalogLayer";
 import { GalaxyDisks } from "../common/GalaxyDisks";
 import { GalaxyClouds } from "../common/GalaxyClouds";
+import { NebulaClouds } from "./NebulaClouds";
 import { useGraphicsStore } from "../../state/graphicsStore";
 import { SkyPhotos } from "../common/SkyPhotos";
 import { useScreenPicking } from "../common/picking";
@@ -111,7 +112,7 @@ export function InterstellarScene() {
         <GalaxyDisks objects={SATELLITES} unitScale={1e6} gain={satelliteGain} />
       )}
       <SkyPhotos objects={SATELLITES} unitScale={1e6} mode="sky" gain={satelliteGain} />
-      <SkyPhotos objects={NEBULAE} mode="billboard" />
+      {pointClouds ? <NebulaClouds objects={NEBULAE} /> : <SkyPhotos objects={NEBULAE} mode="billboard" />}
       {catalog && (
         <>
           <StarField catalog={catalog} />

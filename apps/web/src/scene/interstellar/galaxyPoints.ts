@@ -13,6 +13,7 @@ import {
   type IUniform,
 } from "three";
 import { ARMS, BAR_ANGLE, ORION_SPUR, PITCH_TAN } from "./galaxyModel";
+import { shimmerChunk } from "../twinkle";
 
 /**
  * The Milky Way as pure GPU point clouds. Nothing is generated on the CPU and
@@ -50,6 +51,18 @@ uint pcg(uint v) {
 }
 float rnd() { rng = pcg(rng); return float(rng) * 2.3283064365386963e-10; }
 float gauss() { return sqrt(-2.0 * log(max(rnd(), 1e-7))) * cos(6.28318530718 * rnd()); }
+/**
+ * Isotropic 3D scatter with a solid core: a random direction times an
+ * exponential radius. (Three chained Box–Muller normals collapse to planes
+ * after D3D shader translation, so they're avoided.)
+ */
+vec3 gauss3() {
+  float u = rnd() * 2.0 - 1.0;
+  float phi = rnd() * 6.28318530718;
+  float q = sqrt(1.0 - u * u);
+  float r = -log(max(rnd(), 1e-7)) * 0.8;
+  return vec3(q * cos(phi), q * sin(phi), u) * r;
+}
 float expo(float s) { return -log(max(rnd(), 1e-7)) * s; }
 /** Exponential with scale s, truncated to [lo, hi]: inverse CDF, no rejection loop. */
 float truncExpo(float lo, float s, float hi) { return lo - s * log(1.0 - rnd() * (1.0 - exp(-(hi - lo) / s))); }
@@ -150,7 +163,7 @@ vec3 galaxyStar(float f, out vec3 col, out float bright, out float pop) {
     float scale = core * (rnd() < 0.7 ? 1.0 : 3.0);
     col = mix(YELLOW, WHITE, rnd() * 0.5);
     bright = 0.5 + rnd() * 0.6;
-    p = c + vec3(gauss(), gauss(), gauss()) * scale;
+    p = c + gauss3() * scale;
   }
   return p;
 }
@@ -230,6 +243,7 @@ float extinction(vec3 p) {
 const starsVertex = /* glsl */ `
 ${common}
 varying float vGlint;
+${shimmerChunk}
 void main() {
   rng = pcg(uint(gl_VertexID) * 2654435761u + 17u);
   vec3 col; float bright; float pop;
@@ -239,9 +253,8 @@ void main() {
   float depth = max(-mv.z * uUnit, 1.0);
   // Apparent size from brightness and distance; below a pixel, keep the light as alpha.
   float px = bright * uFocal * 50.0 / depth;
-  float seed = rnd();
-  float tw = 1.0 + uTwinkle * 0.45 * sin(uTime * (1.2 + 3.0 * seed) + seed * 40.0);
-  gl_PointSize = clamp(px, 1.0, uMaxPx) * uPixelRatio;
+  float tw = shimmer(uint(gl_VertexID), uTime, uTwinkle * 1.6);
+  gl_PointSize = clamp(px, 1.0, uMaxPx) * sqrt(tw) * uPixelRatio;
   vAlpha = uOpacity * min(1.0, px * px) * tw * smoothstep(900.0, 4500.0, depth) * extinction(p);
   vGlint = smoothstep(2.5, uMaxPx, px);
   vColor = col;

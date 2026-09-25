@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
 import { useThree } from "@react-three/fiber";
 import {
+  ImageBitmapLoader,
+  Texture,
   LinearFilter,
   LinearMipmapLinearFilter,
   NoColorSpace,
   RepeatWrapping,
   SRGBColorSpace,
   TextureLoader,
-  type Texture,
+
 } from "three";
 
 /**
@@ -42,16 +44,41 @@ export const BODY_TEXTURES: Record<string, BodyTextures> = {
   neptune: { map: T("neptune.jpg") },
 };
 
+import { graphics } from "../state/graphicsStore";
+
 export const TEXTURE_CREDIT = "Planet maps: Solar System Scope (CC BY 4.0), from NASA data";
 
 const loader = new TextureLoader();
+/**
+ * Where supported, images are decoded to ImageBitmaps off the main thread (a
+ * plain <img> upload decodes synchronously inside the frame: a visible hitch
+ * for 4K maps). On Low-tier devices maps are downscaled during decode, which
+ * also quarters their GPU memory.
+ */
+const canBitmap = typeof createImageBitmap === "function" && !/^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+function bitmapLoader(maxWidth: number | null): ImageBitmapLoader {
+  const l = new ImageBitmapLoader();
+  l.setOptions({ imageOrientation: "flipY", premultiplyAlpha: "none", ...(maxWidth ? { resizeWidth: maxWidth, resizeQuality: "high" } : {}) });
+  return l;
+}
 const cache = new Map<string, Promise<Texture>>();
 
 /** Load (once) and cache a texture. `data` maps (masks) skip sRGB decoding. */
 export function loadTexture(url: string, anisotropy: number, data = false): Promise<Texture> {
   let p = cache.get(url);
   if (!p) {
-    p = loader.loadAsync(url).then((tex) => {
+    const lowTier = graphics().galaxyParticles < 80_000;
+    const load = canBitmap
+      ? bitmapLoader(lowTier ? 2048 : null)
+          .loadAsync(url)
+          .then((bmp) => {
+            const t = new Texture(bmp as ImageBitmap);
+            t.flipY = false; // flipped during decode
+            t.needsUpdate = true;
+            return t;
+          })
+      : loader.loadAsync(url);
+    p = load.then((tex) => {
       tex.colorSpace = data ? NoColorSpace : SRGBColorSpace;
       tex.wrapS = RepeatWrapping;
       tex.minFilter = LinearMipmapLinearFilter;

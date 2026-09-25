@@ -5,7 +5,8 @@ import { useIsMobile } from "./useMedia";
 import { useSelectionStore } from "../state/selectionStore";
 
 function ClockReadout() {
-  const timeMs = useTimeStore((s) => s.timeMs);
+  // Whole seconds: re-render when the display changes, not every frame.
+  const timeMs = useTimeStore((s) => Math.floor(s.timeMs / 1000) * 1000);
   const { date, time } = formatUtc(timeMs);
   return (
     <div className="flex items-baseline gap-2 tabular-nums">
@@ -17,7 +18,8 @@ function ClockReadout() {
 }
 
 function MobileClock() {
-  const timeMs = useTimeStore((s) => s.timeMs);
+  // Whole seconds: re-render when the display changes, not every frame.
+  const timeMs = useTimeStore((s) => Math.floor(s.timeMs / 1000) * 1000);
   const { date, time } = formatUtc(timeMs);
   return (
     <div className="flex flex-col px-1.5 leading-tight tabular-nums">

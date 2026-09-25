@@ -2,17 +2,7 @@ import { useCallback, useEffect, useMemo } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import {
-  AdditiveBlending,
-  BackSide,
-  Color,
-  DoubleSide,
   Matrix4,
-  Mesh,
-  PlaneGeometry,
-  ShaderMaterial,
-  SphereGeometry,
-  Sprite,
-  SpriteMaterial,
   Vector3,
   type PerspectiveCamera,
 } from "three";
@@ -20,12 +10,10 @@ import { CATALOG, getCatalogObject, type CatalogObject } from "../../data/catalo
 import { GALACTIC_ROTATION } from "../../astronomy/galactic";
 import { selectObject } from "../../state/selectionStore";
 import { useViewStore } from "../../state/viewStore";
-import { bakeGalaxy } from "../interstellar/Galaxy";
 import { smoothstep } from "../interstellar/visibility";
 import { FlightRig, type RigTarget } from "../common/FlightRig";
 import { CatalogLayer } from "../common/CatalogLayer";
-import { GalaxyDisks, radialGlowTexture } from "../common/GalaxyDisks";
-import { SkyPhotos } from "../common/SkyPhotos";
+import { StructureClouds } from "./StructureClouds";
 import { useScreenPicking } from "../common/picking";
 import { ScreenLabel } from "../ScreenLabel";
 import { StructureOutline } from "./CosmicWeb";
@@ -62,55 +50,6 @@ const labelRange = (o: CatalogObject) => {
 };
 
 /* ------------------------------------------------------------- Milky Way */
-
-const mwFragment = /* glsl */ `
-uniform sampler2D uMap;
-uniform float uGain;
-varying vec2 vUv;
-void main() {
-  vec3 c = texture2D(uMap, vUv).rgb * uGain;
-  gl_FragColor = vec4(c / (1.0 + c * 0.4), 1.0);
-  #include <colorspace_fragment>
-}
-`;
-const uvVertex = /* glsl */ `
-varying vec2 vUv;
-void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
-`;
-
-function MilkyWayDisk() {
-  const gl = useThree((s) => s.gl);
-  const mw = getCatalogObject("milky-way-cosmic")!;
-  const mesh = useMemo(() => {
-    const m = new Mesh(
-      new PlaneGeometry(0.12, 0.12),
-      new ShaderMaterial({
-        vertexShader: uvVertex,
-        fragmentShader: mwFragment,
-        uniforms: { uMap: { value: bakeGalaxy(gl).texture }, uGain: { value: 2.2 } },
-        side: DoubleSide,
-        transparent: true,
-        blending: AdditiveBlending,
-        depthTest: false,
-        depthWrite: false,
-        toneMapped: false,
-      }),
-    );
-    m.matrixAutoUpdate = false;
-    m.matrix.copy(new Matrix4().copy(GALACTIC_ROTATION).setPosition(mw.position));
-    m.frustumCulled = false;
-    m.raycast = () => {};
-    return m;
-  }, [gl, mw]);
-  useEffect(
-    () => () => {
-      mesh.geometry.dispose();
-      (mesh.material as ShaderMaterial).dispose();
-    },
-    [mesh],
-  );
-  return <primitive object={mesh} />;
-}
 
 /** The Milky Way from outside, as the same GPU point cloud as the Stars & Galaxy view (at 1/10 the budget). */
 function MilkyWayPoints() {
@@ -150,92 +89,6 @@ function MilkyWayPoints() {
 
 /* -------------------------------------- clusters, voids, quasars, the edge */
 
-const shellVertex = /* glsl */ `
-varying vec3 vN;
-varying vec3 vView;
-void main() {
-  vec4 wp = modelMatrix * vec4(position, 1.0);
-  vN = normalize(mat3(modelMatrix) * normal);
-  vView = normalize(cameraPosition - wp.xyz);
-  gl_Position = projectionMatrix * viewMatrix * wp;
-}
-`;
-const shellFragment = /* glsl */ `
-uniform vec3 uColor;
-uniform float uOpacity;
-varying vec3 vN;
-varying vec3 vView;
-void main() {
-  float rim = pow(1.0 - abs(dot(vN, vView)), 3.0);
-  gl_FragColor = vec4(uColor * rim * uOpacity, 1.0);
-  #include <colorspace_fragment>
-}
-`;
-
-function Shell({ obj, color, opacity, inside = false }: { obj: CatalogObject; color: string; opacity: number; inside?: boolean }) {
-  const mesh = useMemo(() => {
-    const m = new Mesh(
-      new SphereGeometry(obj.extent / 2, 64, 32),
-      new ShaderMaterial({
-        vertexShader: shellVertex,
-        fragmentShader: shellFragment,
-        uniforms: { uColor: { value: new Color(color) }, uOpacity: { value: opacity } },
-        side: inside ? BackSide : DoubleSide,
-        transparent: true,
-        blending: AdditiveBlending,
-        depthTest: false,
-        depthWrite: false,
-        toneMapped: false,
-      }),
-    );
-    m.position.copy(obj.position);
-    m.frustumCulled = false;
-    m.raycast = () => {};
-    return m;
-  }, [obj, color, opacity, inside]);
-  useEffect(
-    () => () => {
-      mesh.geometry.dispose();
-      (mesh.material as ShaderMaterial).dispose();
-    },
-    [mesh],
-  );
-  // Zoomed in on a single galaxy, a structure hundreds of Mly across would only
-  // paint over it — hide it until the view is wide enough to take it in.
-  const controls = useThree((s) => s.controls) as unknown as { target: Vector3 } | null;
-  const camera = useThree((s) => s.camera);
-  useFrame(() => {
-    const zoom = controls ? camera.position.distanceTo(controls.target) : Infinity;
-    const k = inside ? 1 : smoothstep(obj.extent * 0.02, obj.extent * 0.2, zoom);
-    (mesh.material as ShaderMaterial).uniforms.uOpacity.value = opacity * k;
-    mesh.visible = k > 0.001;
-  });
-  return <primitive object={mesh} />;
-}
-
-function Glow({ obj, color, scale, opacity }: { obj: CatalogObject; color: string; scale: number; opacity: number }) {
-  const sprite = useMemo(() => {
-    const s = new Sprite(
-      new SpriteMaterial({
-        map: radialGlowTexture(),
-        color,
-        opacity,
-        blending: AdditiveBlending,
-        transparent: true,
-        depthTest: false,
-        depthWrite: false,
-        toneMapped: false,
-      }),
-    );
-    s.position.copy(obj.position);
-    s.scale.setScalar(scale);
-    s.raycast = () => {};
-    return s;
-  }, [obj, color, scale, opacity]);
-  useEffect(() => () => sprite.material.dispose(), [sprite]);
-  return <primitive object={sprite} />;
-}
-
 function Structures() {
   const camera = useThree((s) => s.camera);
   const edge = getCatalogObject("observable-universe")!;
@@ -251,14 +104,7 @@ function Structures() {
         opacity={() => smoothstep(12_000, 40_000, camera.position.length())}
         onClick={() => selectObject(edge.id)}
       />
-      {OBJECTS.map((o) => {
-        if (o.kind === "void") return <Shell key={o.id} obj={o} color="#5a6cff" opacity={0.35} />;
-        if (o.id === "observable-universe") return <Shell key={o.id} obj={o} color="#ff9ec7" opacity={0.6} inside />;
-        if (o.kind === "cluster") return <Glow key={o.id} obj={o} color="#ffd9a0" scale={o.extent * 1.6} opacity={0.16} />;
-        if (o.kind === "structure") return <Glow key={o.id} obj={o} color="#ffcf8a" scale={o.extent * 2} opacity={0.25} />;
-        if (o.kind === "quasar") return <Glow key={o.id} obj={o} color="#cfeaff" scale={o.framing * 0.15} opacity={0.9} />;
-        return null;
-      })}
+      <StructureClouds objects={OBJECTS} />
     </>
   );
 }
@@ -313,18 +159,21 @@ function Rig() {
  * Millions of light-years: famous galaxies, 43,700 real galaxies with their
  * groups, clusters and superclusters, voids, quasars and the edge.
  */
+/**
+ * No photographs, textures or billboards here: every galaxy, cluster, wall,
+ * void and quasar is a procedural 3D point cloud anchored on its catalogued
+ * position (regardless of the Point-cloud setting, which applies elsewhere).
+ */
 export function CosmicScene() {
-  const pointClouds = useGraphicsStore((g) => g.pointClouds);
   return (
     <>
-      {pointClouds ? <MilkyWayPoints /> : <MilkyWayDisk />}
+      <MilkyWayPoints />
       <ModelledGalaxies />
       <CosmicWeb />
       <StructureOutline />
-      {pointClouds ? <GalaxyClouds objects={GALAXIES} unitScale={1} pointSlot /> : <GalaxyDisks objects={GALAXIES} unitScale={1} />}
+      <GalaxyClouds objects={GALAXIES} unitScale={1} pointSlot photos={false} />
       <PointGalaxyLabel />
       <PointGalaxyPicking />
-      <SkyPhotos objects={GALAXIES} mode="sky" />
       <Structures />
       <CatalogLayer objects={OTHER_OBJECTS} labelRange={labelRange} markerKinds={MARKER_KINDS} />
       <CatalogLayer objects={STRUCTURES} labelRange={labelRange} markerKinds={[]} opacity={structureNames} />

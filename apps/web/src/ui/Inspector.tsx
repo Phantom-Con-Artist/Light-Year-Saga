@@ -27,6 +27,7 @@ import { SATELLITE_GROUPS, SMALL_BODY_CLASSES } from "../data/solar/regions";
 import { SATELLITES, SMALL_BODY_COUNTS } from "../data/solar/elements.gen";
 import { formatDays, formatDuration, formatLightTime, formatNumber, formatScientific } from "./format";
 import { Icon } from "./Icon";
+import { useGraphicsStore } from "../state/graphicsStore";
 import { isPointGalaxyId, pointGalaxyInfo, useCosmicPoints } from "../data/cosmic/cosmicPoints";
 import { lookbackTimeGyr, redshiftFromComovingMly } from "../astronomy/cosmology";
 import { TWO_MRS, doi } from "../data/catalog/sources";
@@ -565,6 +566,7 @@ function sizeLine(radiusSolar: number): string {
 }
 
 function CatalogInspector({ obj }: { obj: CatalogObject }) {
+  const pointClouds = useGraphicsStore((g) => g.pointClouds);
   const bh = obj.blackHole;
   const rsKm = bh ? 2.953 * bh.massSolar : 0;
   return (
@@ -620,26 +622,34 @@ function CatalogInspector({ obj }: { obj: CatalogObject }) {
             shine mostly in {bh.massSolar > 1000 ? "ultraviolet" : "X-rays"}.
           </p>
         )}
-        {obj.photo && (
+        {obj.level === "cosmic" && (obj.kind === "galaxy" || obj.kind === "cluster" || obj.kind === "structure" || obj.kind === "void" || obj.kind === "quasar") && (
+          <p className="mt-2.5 text-[12px] leading-relaxed text-ink-faint">
+            In the Universe view this is a procedural 3D point-cloud model anchored on its real catalogued position, size and orientation: its stars, arms, gas and
+            structure are generated from its type, not taken from a photograph.
+          </p>
+        )}
+        {obj.photo && obj.level !== "cosmic" && (
           <p className="mt-2.5 text-[12px] leading-relaxed text-ink-faint">
             {obj.kind === "nebula"
-              ? "A real photograph, placed at its true position and size and oriented as seen from Earth."
+              ? pointClouds
+                ? "Drawn as a point cloud sampled from a real photograph: its shape and colours are observed, placed at the true position and size as seen from Earth. Its depth along our line of sight can't be measured from a photo and is modelled."
+                : "A real photograph, placed at its true position and size and oriented as seen from Earth."
               : "Seen from Earth’s direction this is a real photograph at its true position, size and orientation; from other angles an illustrated 3D disk takes over."}
           </p>
         )}
-        {(obj.kind === "galaxy" || obj.kind === "nebula") && !obj.visualNote && !obj.photo && (
+        {(obj.kind === "galaxy" || obj.kind === "nebula") && obj.level !== "cosmic" && !obj.visualNote && !obj.photo && (
           <p className="mt-2.5 text-[12px] leading-relaxed text-ink-faint">
             Position, size and orientation are real; its appearance is an illustration based on its type.
           </p>
         )}
       </Section>
-      {obj.photo && (
+      {obj.photo && obj.level !== "cosmic" && (
         <Section title="Photograph">
           <p className="text-[13px] text-ink-dim">{obj.photo.telescope}</p>
           <p className="mt-1 text-[12px] leading-relaxed text-ink-faint">Credit: {obj.photo.credit} · CC BY 4.0</p>
         </Section>
       )}
-      <Sources sources={obj.photo ? [...obj.sources, obj.photo.release] : obj.sources} />
+      <Sources sources={obj.photo && obj.level !== "cosmic" ? [...obj.sources, obj.photo.release] : obj.sources} />
     </Shell>
   );
 }

@@ -14,6 +14,7 @@ import { useCosmicStore } from "../state/cosmicStore";
 import { COSMIC_WEB_GALAXIES, GEN_SUPERCLUSTERS } from "../data/catalog/structures.gen";
 import { SUPERCLUSTER_COLORS } from "../data/catalog/structures";
 import { selectObject } from "../state/selectionStore";
+import { useGraphicsStore } from "../state/graphicsStore";
 
 function formatDistance(level: "interstellar" | "cosmic", d: number): string {
   if (level === "interstellar") {
@@ -30,7 +31,7 @@ function hint(level: "interstellar" | "cosmic", d: number, touch: boolean): stri
   const [zoomIn, zoomOut] = touch ? ["Spread", "Pinch"] : ["Scroll in", "Scroll out"];
   if (level === "interstellar") {
     if (d < 0.5) return `${zoomIn} on the Sun to return to the Solar System`;
-    if (d < 5_000) return `${zoomOut} to see the whole galaxy`;
+    if (d < 5_000) return useGraphicsStore.getState().pointClouds ? `Nebulae are shaped from real photos · ${zoomOut.toLowerCase()} for the galaxy` : `${zoomOut} to see the whole galaxy`;
     if (d < 300_000) return `Keep ${touch ? "pinching" : "scrolling out"} to leave the Milky Way`;
     return `${zoomOut} to enter the Universe view`;
   }
@@ -60,11 +61,14 @@ export function DistanceReadout() {
   }
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-0 z-20 flex justify-center p-3 md:p-4">
-      <div className="panel animate-fade-in flex flex-col items-center gap-0.5 px-4 py-2">
-        <div className="text-[13px] text-ink-dim tabular-nums">
-          <span className="font-medium text-ink">{formatDistance(level, d)}</span> from the Sun
+      <div className="panel animate-fade-in pointer-events-auto flex items-center gap-3 py-1.5 pr-1.5 pl-4">
+        <div className="flex flex-col gap-0.5">
+          <div className="text-[13px] text-ink-dim tabular-nums">
+            <span className="font-medium text-ink">{formatDistance(level, d)}</span> from the Sun
+          </div>
+          <div className="text-[11px] text-ink-faint">{hint(level, d, touch)}</div>
         </div>
-        <div className="text-[11px] text-ink-faint">{hint(level, d, touch)}</div>
+        <QuickLook />
       </div>
     </div>
   );
@@ -360,6 +364,37 @@ export function CosmicHud() {
         )}
       </div>
       <div className="mt-1.5 flex flex-wrap gap-0.5 border-t border-line pt-1.5">{chips}</div>
+    </div>
+  );
+}
+
+/** One-tap look options for the galaxy views (the same switches as in Settings). */
+function QuickLook() {
+  const pointClouds = useGraphicsStore((g) => g.pointClouds);
+  const twinkle = useGraphicsStore((g) => g.twinkle);
+  const set = useGraphicsStore((g) => g.set);
+  return (
+    <div className="flex gap-0.5 border-l border-line pl-1.5">
+      <button
+        type="button"
+        className="btn !h-8 !px-2.5 !text-[12px]"
+        data-on={pointClouds}
+        aria-pressed={pointClouds}
+        title="Galaxies, nebulae and the Universe as GPU point clouds (off: the classic painted look)"
+        onClick={() => set("pointClouds", !pointClouds)}
+      >
+        Point clouds
+      </button>
+      <button
+        type="button"
+        className="btn !h-8 !px-2.5 !text-[12px]"
+        data-on={twinkle}
+        aria-pressed={twinkle}
+        title="Gentle per-star shimmer (a visual effect; catalogue brightness is unchanged)"
+        onClick={() => set("twinkle", !twinkle)}
+      >
+        Twinkle
+      </button>
     </div>
   );
 }
