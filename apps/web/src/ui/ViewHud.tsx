@@ -8,7 +8,12 @@ import { formatNumber } from "./format";
 import { Icon } from "./Icon";
 import { useIsMobile, useIsTouch } from "./useMedia";
 import { useSelectionStore } from "../state/selectionStore";
+import { useShallow } from "zustand/react/shallow";
 import { useSkyStore, type SkyLayers } from "../state/skyStore";
+import { useCosmicStore } from "../state/cosmicStore";
+import { COSMIC_WEB_GALAXIES, GEN_SUPERCLUSTERS } from "../data/catalog/structures.gen";
+import { SUPERCLUSTER_COLORS } from "../data/catalog/structures";
+import { selectObject } from "../state/selectionStore";
 
 function formatDistance(level: "interstellar" | "cosmic", d: number): string {
   if (level === "interstellar") {
@@ -30,7 +35,7 @@ function hint(level: "interstellar" | "cosmic", d: number, touch: boolean): stri
     return `${zoomOut} to enter the Universe view`;
   }
   if (d < 1) return `${zoomIn} on the Milky Way to return to the stars`;
-  return "Dots are 43,415 real galaxies (2MASS Redshift Survey)";
+  return `Dots are ${formatNumber(COSMIC_WEB_GALAXIES, 0)} real galaxies, coloured by supercluster`;
 }
 
 /** Where the camera is (interstellar / universe views). */
@@ -188,8 +193,8 @@ export function ScaleHud() {
 }
 
 const SKY_LAYERS: [keyof SkyLayers, string][] = [
-  ["figures", "Lines"],
-  ["names", "Names"],
+  ["figures", "All lines"],
+  ["names", "All names"],
   ["starNames", "Stars"],
   ["borders", "Borders"],
   ["grid", "Grid"],
@@ -198,7 +203,20 @@ const SKY_LAYERS: [keyof SkyLayers, string][] = [
 
 /** Layer toggles and zoom for the night-sky view. */
 export function SkyHud() {
-  const sky = useSkyStore();
+  // Not the whole store: the hovered constellation changes constantly.
+  const sky = useSkyStore(
+    useShallow((s) => ({
+      figures: s.figures,
+      names: s.names,
+      starNames: s.starNames,
+      borders: s.borders,
+      grid: s.grid,
+      milkyWay: s.milkyWay,
+      fov: s.fov,
+      toggle: s.toggle,
+      zoomBy: s.zoomBy,
+    })),
+  );
   const mobile = useIsMobile();
   const touch = useIsTouch();
   const zoom = sky.zoomBy;
@@ -236,10 +254,75 @@ export function SkyHud() {
         </div>
         {!mobile && (
           <div className="text-[11px] text-ink-faint">
-            {touch ? "Drag to look around · pinch to zoom · tap a star or a figure" : "Drag to look around · scroll to zoom · click a star or a figure"}
+            {touch
+              ? "Pan to explore: the constellation under the ring lights up · pinch to zoom"
+              : "Move the mouse over the sky to find constellations · drag to look around · scroll to zoom"}
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Universe view: supercluster colour key and structure toggles. */
+export function CosmicHud() {
+  const colorBy = useCosmicStore((s) => s.colorBySupercluster);
+  const names = useCosmicStore((s) => s.structureNames);
+  const toggle = useCosmicStore((s) => s.toggle);
+  const selected = useSelectionStore((s) => s.selectedId);
+  const mobile = useIsMobile();
+
+  const chips = (
+    <>
+      <button
+        type="button"
+        className={`btn ${mobile ? "!h-8 !px-2.5 !text-[12px]" : ""}`}
+        data-on={colorBy}
+        aria-pressed={colorBy}
+        onClick={() => toggle("colorBySupercluster")}
+      >
+        Colour by supercluster
+      </button>
+      <button
+        type="button"
+        className={`btn ${mobile ? "!h-8 !px-2.5 !text-[12px]" : ""}`}
+        data-on={names}
+        aria-pressed={names}
+        onClick={() => toggle("structureNames")}
+      >
+        Names
+      </button>
+    </>
+  );
+
+  // A selection opens the inspector in the same corner (desktop) or over the bottom (phone).
+  if (selected) return null;
+  if (mobile) {
+    return (
+      <div className="pointer-events-none fixed inset-x-0 bottom-[3.6rem] z-20 flex justify-center px-2">
+        <div className="panel pointer-events-auto flex gap-0.5 p-0.5">{chips}</div>
+      </div>
+    );
+  }
+  return (
+    <div className="panel animate-fade-in pointer-events-auto fixed right-4 bottom-4 z-10 w-60 p-2">
+      <div className="label-caps px-1.5 pb-1.5">Superclusters</div>
+      <ul className={colorBy ? "" : "opacity-50"}>
+        {GEN_SUPERCLUSTERS.map((s, i) => (
+          <li key={s.id}>
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-[12.5px] text-ink-dim hover:bg-white/[0.06] hover:text-ink"
+              data-on={selected === s.id}
+              onClick={() => selectObject(s.id)}
+            >
+              <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: SUPERCLUSTER_COLORS[i] }} />
+              <span className="truncate">{s.name}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-1.5 flex flex-wrap gap-0.5 border-t border-line pt-1.5">{chips}</div>
     </div>
   );
 }

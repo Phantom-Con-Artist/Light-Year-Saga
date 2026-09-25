@@ -1,9 +1,10 @@
 import { useEffect, useMemo } from "react";
 import { useFrame } from "@react-three/fiber";
-import { AdditiveBlending, BufferAttribute, BufferGeometry, Points, ShaderMaterial } from "three";
+import { BufferAttribute, BufferGeometry } from "three";
 import type { StarCatalog } from "../../data/stars";
+import { useGraphicsStore } from "../../state/graphicsStore";
 import { starVisibility } from "./visibility";
-import { starFragment, starUniforms, starVertexChunk, syncStarUniforms } from "../starShading";
+import { createStarPoints, starUniforms, starVertexChunk, syncStarUniforms } from "../starShading";
 
 const vertex = /* glsl */ `
 attribute float aAbsMag;
@@ -27,50 +28,32 @@ void main() {
 }
 `;
 
-/** All catalogue stars as one draw call. */
+/** All catalogue stars: crisp stars plus their glow pass, two draw calls. */
 export function StarField({ catalog }: { catalog: StarCatalog }) {
-  const points = useMemo(() => {
+  const glowOn = useGraphicsStore((g) => g.starGlow);
+  const layer = useMemo(() => {
     const geometry = new BufferGeometry();
     geometry.setAttribute("position", new BufferAttribute(catalog.positions, 3));
     geometry.setAttribute("aAbsMag", new BufferAttribute(catalog.absMag, 1));
     geometry.setAttribute("aColor", new BufferAttribute(catalog.colors, 3));
-    geometry.computeBoundingSphere();
-
-    const material = new ShaderMaterial({
-      vertexShader: vertex,
-      fragmentShader: starFragment,
-      uniforms: {
-        ...starUniforms(),
-        uLimitMag: { value: 6.5 },
-        uFade: { value: 1 },
-      },
-      transparent: true,
-      blending: AdditiveBlending,
-      depthTest: false,
-      depthWrite: false,
-      toneMapped: false,
-    });
-    const p = new Points(geometry, material);
-    p.frustumCulled = false;
-    p.raycast = () => {};
-    return p;
+    return createStarPoints(geometry, vertex, { ...starUniforms(), uLimitMag: { value: 6.5 }, uFade: { value: 1 } });
   }, [catalog]);
-
-  useEffect(
-    () => () => {
-      points.geometry.dispose();
-      (points.material as ShaderMaterial).dispose();
-    },
-    [points],
-  );
+  useEffect(() => () => layer.dispose(), [layer]);
 
   useFrame(({ camera, gl, clock }) => {
-    const u = (points.material as ShaderMaterial).uniforms;
+    const u = layer.uniforms;
     const v = starVisibility(camera.position.length());
     u.uLimitMag.value = v.limitMag;
     u.uFade.value = v.fade;
+    layer.main.visible = v.fade > 0.001;
+    layer.glow.visible = glowOn && layer.main.visible;
     syncStarUniforms(u, clock.elapsedTime, gl.getPixelRatio());
   });
 
-  return <primitive object={points} />;
+  return (
+    <>
+      <primitive object={layer.glow} />
+      <primitive object={layer.main} />
+    </>
+  );
 }

@@ -458,6 +458,121 @@
   .constellation-label[data-active="true"] {
     color: #ffd08a;
   }
+  .sky-pole-label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    translate: -3px -50%;
+    white-space: nowrap;
+    font-size: 10.5px;
+    letter-spacing: 0.04em;
+    color: rgb(214 179 111 / 0.7);
+    text-shadow: 0 1px 3px rgb(0 0 0 / 0.9);
+    user-select: none;
+  }
+  .sky-pole-label__dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 999px;
+    border: 1px solid rgb(214 179 111 / 0.8);
+  }
+
+  /* Sky compass: turns with the view. Bottom-right on desktop, under the top bar on phones. */
+  .sky-compass {
+    position: absolute;
+    right: 16px;
+    bottom: 16px;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    pointer-events: none;
+    user-select: none;
+  }
+  .sky-compass__dial {
+    position: relative;
+    border-radius: 999px;
+    background: rgb(10 12 18 / 0.55);
+    border: 1px solid rgb(255 255 255 / 0.1);
+  }
+  .sky-compass__needle {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 2px;
+    height: 20px;
+    margin: -20px 0 0 -1px;
+    transform-origin: 50% 100%;
+    border-radius: 2px;
+    background: linear-gradient(to top, transparent, #ffc46b);
+  }
+  .sky-compass__letter {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 14px;
+    height: 14px;
+    margin: -7px 0 0 -7px;
+    text-align: center;
+    font-size: 10.5px;
+    font-weight: 600;
+    line-height: 14px;
+    color: var(--color-ink-dim);
+  }
+  .sky-compass__letter--n {
+    color: #ffc46b;
+  }
+  .sky-compass__readout {
+    font-size: 10.5px;
+    color: var(--color-ink-faint);
+    text-shadow: 0 1px 2px #000;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .sky-compass__name {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #a9d4ff;
+    text-shadow: 0 1px 3px #000;
+  }
+  .sky-compass__name:empty {
+    display: none;
+  }
+  @media (max-width: 767px) {
+    .sky-compass {
+      top: calc(max(0.5rem, env(safe-area-inset-top)) + 3rem);
+      bottom: auto;
+      right: 8px;
+    }
+  }
+  /* Touch: what's under this ring is the constellation being looked at. */
+  .sky-reticle {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 26px;
+    height: 26px;
+    margin: -13px 0 0 -13px;
+    border-radius: 999px;
+    border: 1px solid rgb(169 212 255 / 0.45);
+    pointer-events: none;
+    z-index: 4;
+  }
+  .sky-reticle::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 2px;
+    height: 2px;
+    margin: -1px 0 0 -1px;
+    border-radius: 999px;
+    background: rgb(169 212 255 / 0.8);
+  }
+
   .sky-star-label {
     font-size: 11.5px;
     color: rgb(255 255 255 / 0.55);

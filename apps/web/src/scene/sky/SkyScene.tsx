@@ -2,7 +2,15 @@ import { useCallback, useEffect, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { Matrix4, Vector3, Vector4, type PerspectiveCamera } from "three";
 import { starId, starName, useStarStore, type StarCatalog } from "../../data/stars";
-import { CONSTELLATIONS, figureExtent, getConstellation, skyDirection, useConstellationStore, type ConstellationGeometry } from "../../data/constellations";
+import {
+  CONSTELLATIONS,
+  constellationAt,
+  figureExtent,
+  getConstellation,
+  skyDirection,
+  useConstellationStore,
+  type ConstellationGeometry,
+} from "../../data/constellations";
 import { CELESTIAL_NORTH, renderToRaDec } from "../../astronomy/sky";
 import { selectObject, useSelectionStore } from "../../state/selectionStore";
 import { useCameraStore } from "../../state/cameraStore";
@@ -12,6 +20,8 @@ import { SkyStars, skySphere } from "../common/SkyStars";
 import { usePickProvider, useScreenPicking } from "../common/picking";
 import { ScreenLabel } from "../ScreenLabel";
 import { ConstellationLines, LINE_RADIUS } from "./ConstellationLines";
+import { ConstellationFigures } from "./ConstellationFigures";
+import { ConstellationHover, SkyDirections, screenDirection } from "./SkyDirections";
 import { smoothstep } from "../interstellar/visibility";
 
 const MIN_FOV = 6;
@@ -224,29 +234,6 @@ function useLookAtSelection(catalog: StarCatalog | null, geometry: Constellation
   }, [catalog, geometry]);
 }
 
-const segmentCache = new WeakMap<ConstellationGeometry, { ends: Float32Array; ids: string[] }>();
-
-/** Every stick-figure segment as unit-vector end points, for picking. */
-function figureSegments(geometry: ConstellationGeometry) {
-  let hit = segmentCache.get(geometry);
-  if (hit) return hit;
-  const ends: number[] = [];
-  const ids: string[] = [];
-  for (const [id, lines] of Object.entries(geometry.figures)) {
-    for (const line of lines) {
-      for (let k = 0; k + 3 < line.length; k += 2) {
-        const p = skyDirection(line[k], line[k + 1]);
-        const q = skyDirection(line[k + 2], line[k + 3]);
-        ends.push(p.x, p.y, p.z, q.x, q.y, q.z);
-        ids.push(id);
-      }
-    }
-  }
-  hit = { ends: new Float32Array(ends), ids };
-  segmentCache.set(geometry, hit);
-  return hit;
-}
-
 const MAX_LABELS = 28;
 const LABEL_W = 96;
 const LABEL_H = 16;
@@ -254,7 +241,7 @@ const PICK_RADIUS_PX = 12;
 
 /**
  * DOM layer for the sky: names of bright stars (with overlap culling), a ring
- * on the selected star, and screen-space picking for stars and figures.
+ * on the selected star, and screen-space picking for stars and constellations.
  */
 function SkyOverlay({ catalog, geometry }: { catalog: StarCatalog; geometry: ConstellationGeometry | null }) {
   const gl = useThree((s) => s.gl);
@@ -339,32 +326,16 @@ function SkyOverlay({ catalog, geometry }: { catalog: StarCatalog; geometry: Con
     ),
   );
 
-  // Figures: a tap on or near a stick-figure line selects the constellation.
+  // Anywhere else inside a constellation's outline selects the constellation (stars near the tap win).
+  const ray = useRef(new Vector3());
   usePickProvider(
     useCallback(
       (x: number, y: number) => {
-        if (!geometry || !useSkyStore.getState().figures) return null;
-        refreshMatrix();
-        const { ends, ids } = figureSegments(geometry);
-        const a = new Vector4();
-        const b = new Vector4();
-        let best: string | null = null;
-        let bestD = 14;
-        for (let n = 0; n < ids.length; n++) {
-          const e = n * 6;
-          if (!project(ends[e], ends[e + 1], ends[e + 2], a) || !project(ends[e + 3], ends[e + 4], ends[e + 5], b)) continue;
-          const dx = b.x - a.x;
-          const dy = b.y - a.y;
-          const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / Math.max(dx * dx + dy * dy, 1e-6)));
-          const d = Math.hypot(a.x + dx * t - x, a.y + dy * t - y);
-          if (d < bestD) {
-            bestD = d;
-            best = ids[n];
-          }
-        }
-        return best ? { id: `con-${best}`, score: bestD } : null;
+        if (!geometry) return null;
+        const id = constellationAt(geometry, screenDirection(camera, x / size.width, y / size.height, ray.current));
+        return id ? { id: `con-${id}`, score: 40 } : null;
       },
-      [geometry, size],
+      [geometry, size, camera],
     ),
   );
 
@@ -418,7 +389,7 @@ function SkyOverlay({ catalog, geometry }: { catalog: StarCatalog; geometry: Con
   return null;
 }
 
-/** Constellation names: prominent figures always, fainter ones as you zoom in. */
+/** Constellation names: the one being looked at and the selection; all of them (prominent first) with "All names" on. */
 function ConstellationNames() {
   return (
     <>
@@ -430,12 +401,12 @@ function ConstellationNames() {
           className="constellation-label"
           opacity={() => {
             const s = useSkyStore.getState();
-            if (useSelectionStore.getState().selectedId === c.key) return 1;
+            if (useSelectionStore.getState().selectedId === c.key || s.hovered === c.id) return 1;
             if (!s.names) return 0;
             const reveal = c.rank === 1 ? 140 : c.rank === 2 ? 85 : 55;
             return 1 - smoothstep(reveal * 0.8, reveal, s.fov);
           }}
-          active={() => useSelectionStore.getState().selectedId === c.key}
+          active={() => useSelectionStore.getState().selectedId === c.key || useSkyStore.getState().hovered === c.id}
           onClick={() => selectObject(c.key)}
         />
       ))}
@@ -462,7 +433,14 @@ export function SkyScene() {
     <>
       <SkyLook />
       <SkyDome gain={0.55} blackLevel={0.035} opacity={() => (useSkyStore.getState().milkyWay ? 1 : 0)} />
-      {geometry && <ConstellationLines data={geometry} />}
+      {geometry && (
+        <>
+          <ConstellationLines data={geometry} />
+          <ConstellationFigures data={geometry} />
+          <ConstellationHover geometry={geometry} />
+        </>
+      )}
+      <SkyDirections />
       {catalog && (
         <>
           <SkyStars catalog={catalog} limitMag={() => skyLimitMag(useSkyStore.getState().fov)} />

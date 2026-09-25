@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
-import { AdditiveBlending, BufferAttribute, BufferGeometry, Points, ShaderMaterial, type Group } from "three";
+import { BufferAttribute, BufferGeometry, type Group } from "three";
+import { useGraphicsStore } from "../../state/graphicsStore";
 import { apparentMagnitude, starDistanceLy, type StarCatalog } from "../../data/stars";
-import { starFragment, starUniforms, starVertexChunk, syncStarUniforms } from "../starShading";
+import { createStarPoints, starUniforms, starVertexChunk, syncStarUniforms } from "../starShading";
 
 const vertex = /* glsl */ `
 attribute float aMag;
@@ -67,10 +68,11 @@ interface SkyStarsProps {
   renderOrder?: number;
 }
 
-/** Real stars on the celestial sphere, as seen from Earth. One draw call. */
+/** Real stars on the celestial sphere, as seen from Earth: crisp stars plus their glow. */
 export function SkyStars({ catalog, radius = 1000, limitMag, opacity, followCamera = false, depthTest = false, renderOrder = 0 }: SkyStarsProps) {
   const group = useRef<Group>(null!);
-  const points = useMemo(() => {
+  const glowOn = useGraphicsStore((g) => g.starGlow);
+  const layer = useMemo(() => {
     const sky = skySphere(catalog);
     const pos = new Float32Array(sky.directions.length);
     for (let i = 0; i < pos.length; i++) pos[i] = sky.directions[i] * radius;
@@ -81,36 +83,17 @@ export function SkyStars({ catalog, radius = 1000, limitMag, opacity, followCame
     geometry.setAttribute("position", new BufferAttribute(pos, 3));
     geometry.setAttribute("aMag", new BufferAttribute(sky.mags, 1));
     geometry.setAttribute("aColor", new BufferAttribute(colors, 3));
-    const material = new ShaderMaterial({
-      vertexShader: vertex,
-      fragmentShader: starFragment,
-      uniforms: { ...starUniforms(), uLimitMag: { value: 6 }, uFade: { value: 1 } },
-      transparent: true,
-      blending: AdditiveBlending,
-      depthTest,
-      depthWrite: false,
-      toneMapped: false,
-    });
-    const p = new Points(geometry, material);
-    p.frustumCulled = false;
-    p.renderOrder = renderOrder;
-    p.raycast = () => {};
-    return p;
+    return createStarPoints(geometry, vertex, { ...starUniforms(), uLimitMag: { value: 6 }, uFade: { value: 1 } }, { depthTest, renderOrder });
   }, [catalog, radius, depthTest, renderOrder]);
 
-  useEffect(
-    () => () => {
-      points.geometry.dispose();
-      (points.material as ShaderMaterial).dispose();
-    },
-    [points],
-  );
+  useEffect(() => () => layer.dispose(), [layer]);
 
   useFrame(({ camera, gl, clock }) => {
     if (followCamera) group.current.position.copy(camera.position);
-    const u = (points.material as ShaderMaterial).uniforms;
+    const u = layer.uniforms;
     const o = opacity ? opacity() : 1;
     group.current.visible = o > 0.001;
+    layer.glow.visible = glowOn;
     u.uFade.value = o;
     u.uLimitMag.value = limitMag();
     syncStarUniforms(u, clock.elapsedTime, gl.getPixelRatio());
@@ -118,7 +101,8 @@ export function SkyStars({ catalog, radius = 1000, limitMag, opacity, followCame
 
   return (
     <group ref={group}>
-      <primitive object={points} />
+      <primitive object={layer.glow} />
+      <primitive object={layer.main} />
     </group>
   );
 }

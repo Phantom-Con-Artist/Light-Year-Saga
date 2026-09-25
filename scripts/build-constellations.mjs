@@ -8,14 +8,14 @@
  * are the IAU constellation boundaries (J2000).
  *
  * Output:
- *   apps/web/public/data/constellations.json   figures + borders (fetched by the Sky view)
+ *   apps/web/public/data/constellations.json   figures, borders and region outlines (fetched by the Sky view)
  *   apps/web/src/data/constellationNames.ts    names and label positions (bundled, used by search)
  */
 import fs from "node:fs";
 import path from "node:path";
 
 const BASE = "https://raw.githubusercontent.com/ofrohn/d3-celestial/master/data/";
-const FILES = ["constellations.json", "constellations.lines.json", "constellations.borders.json"];
+const FILES = ["constellations.json", "constellations.lines.json", "constellations.borders.json", "constellations.bounds.json"];
 
 async function load(name) {
   const local = process.argv[2] && path.join(process.argv[2], name);
@@ -26,7 +26,7 @@ async function load(name) {
   return res.json();
 }
 
-const [names, lines, borders] = await Promise.all(FILES.map(load));
+const [names, lines, borders, bounds] = await Promise.all(FILES.map(load));
 
 /** RA in degrees (d3-celestial uses −180…180) → 0…360, rounded to save space. */
 const ra = (v) => Math.round((((v % 360) + 360) % 360) * 1e4) / 1e4;
@@ -41,6 +41,11 @@ const out = {
   figures,
   // ["And,Lac", [ra, dec, …]]: each boundary segment and the two constellations it separates.
   borders: borders.features.flatMap((f) => f.geometry.coordinates.map((c) => [f.ids, flat(c)])),
+  // Closed outline(s) per constellation, for "which constellation is this point in?". Serpens has two parts.
+  regions: bounds.features.reduce((acc, f) => {
+    (acc[f.id] ??= []).push(flat(f.geometry.coordinates[0]));
+    return acc;
+  }, {}),
 };
 fs.writeFileSync(path.resolve("apps/web/public/data/constellations.json"), JSON.stringify(out));
 

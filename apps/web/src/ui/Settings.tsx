@@ -280,6 +280,14 @@ function Body() {
         <Row label="Diffraction spikes" hint="The four-point sparkle telescopes put on bright stars.">
           <Toggle label="Diffraction spikes" on={g.spikes} onChange={bind("spikes")} />
         </Row>
+        <Row label="Star glow" hint="A soft halo in each bright star's own colour, like bloom in a camera. Drawn per star, so it stays cheap.">
+          <Toggle label="Star glow" on={g.starGlow} onChange={bind("starGlow")} />
+        </Row>
+        {g.starGlow && (
+          <Row label="Glow strength" stacked>
+            <Slider label="Glow strength" value={g.glowStrength} min={0.2} max={2.5} step={0.05} onChange={bind("glowStrength")} format={times} />
+          </Row>
+        )}
       </Section>
 
       <Section title="Galaxy">
@@ -376,7 +384,7 @@ export function PerfOverlay() {
   if (!show) return null;
   const tone = fps >= 50 ? "text-live" : fps >= 28 ? "text-warn" : "text-[#ff8a7a]";
   return (
-    <div className="pointer-events-none fixed top-[3.3rem] left-2 z-30 rounded-md bg-black/60 px-2 py-1 font-mono text-[11px] text-ink-dim tabular-nums md:top-auto md:right-3 md:bottom-3 md:left-auto">
+    <div className="pointer-events-none fixed top-[3.3rem] left-2 z-30 rounded-md bg-black/60 px-2 py-1 font-mono text-[11px] text-ink-dim tabular-nums md:top-[4.4rem] md:left-1/2 md:-translate-x-1/2">
       <span className={tone}>{formatNumber(fps, 0)} fps</span> · {formatNumber(ms, 1)} ms · {formatNumber(ratio, 2)}×
     </div>
   );

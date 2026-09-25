@@ -55,6 +55,8 @@ export const CATALOG_KIND_LABEL: Record<CatalogObject["kind"], string> = {
   "stellar-remnant": "Stellar remnant",
   nebula: "Nebula",
   cluster: "Galaxy cluster",
+  group: "Galaxy group",
+  supercluster: "Supercluster",
   void: "Cosmic void",
   structure: "Structure",
   "exo-system": "Planetary system",

@@ -39,6 +39,9 @@ export interface GraphicsValues {
   twinkleStrength: number;
   /** Four-point diffraction spikes on bright stars. */
   spikes: boolean;
+  /** Soft halo around bright stars (a cheap bloom). */
+  starGlow: boolean;
+  glowStrength: number;
 
   /** Stars in the 3D Milky Way point cloud. */
   galaxyParticles: number;
@@ -69,6 +72,8 @@ export const PRESETS: Record<Tier, GraphicsValues> = {
     twinkle: true,
     twinkleStrength: 0.35,
     spikes: false,
+    starGlow: true,
+    glowStrength: 0.8,
     galaxyParticles: 30_000,
     dust: false,
     nebulae: true,
@@ -92,6 +97,8 @@ export const PRESETS: Record<Tier, GraphicsValues> = {
     twinkle: true,
     twinkleStrength: 0.5,
     spikes: true,
+    starGlow: true,
+    glowStrength: 1,
     galaxyParticles: 80_000,
     dust: true,
     nebulae: true,
@@ -115,6 +122,8 @@ export const PRESETS: Record<Tier, GraphicsValues> = {
     twinkle: true,
     twinkleStrength: 0.5,
     spikes: true,
+    starGlow: true,
+    glowStrength: 1,
     galaxyParticles: 160_000,
     dust: true,
     nebulae: true,
@@ -138,6 +147,8 @@ export const PRESETS: Record<Tier, GraphicsValues> = {
     twinkle: true,
     twinkleStrength: 0.5,
     spikes: true,
+    starGlow: true,
+    glowStrength: 1.1,
     galaxyParticles: 300_000,
     dust: true,
     nebulae: true,

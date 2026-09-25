@@ -123,7 +123,7 @@ A pre-configured [`netlify.toml`](netlify.toml) is included:
 |---|---|---|
 | **Solar System** | compressed AU | Sun, 8 planets, Pluto, and Moon at real astronomical positions (Astronomy Engine) with real-time or accelerated time scrub. |
 | **Stars & Galaxy** | light-years (Sun at origin) | 42,247 real stars (HYG Database v4.1), 10 nebulae, black holes, extreme stars, and 8 exoplanet systems at true RA/Dec/distance within a calibrated Milky Way model. |
-| **Universe** | millions of light-years (Mly) | The Local Group, 16 benchmark galaxies at real positions, tilts and sizes; 43,415 galaxies from 2MRS; Virgo and Coma clusters; Great Attractor; Boötes Void; quasars out to TON 618; observable universe boundary. |
+| **Universe** | millions of light-years (Mly) | The Local Group, 16 benchmark galaxies at real positions, tilts and sizes; 43,704 real galaxies (2MRS plus the Updated Nearby Galaxy Catalog) grouped into the Local Group, 11 nearby groups, 20 named clusters and 8 superclusters found from the data; Great Attractor; Boötes Void; quasars out to TON 618; observable universe boundary. |
 | **Close-up** | solar radii ($R_\odot$) | Star, black hole, or planetary system rendered at true physical scale with reference orbits for size comparison. |
 | **Size** | kilometres (floating origin) | 30 comparative cosmic structures from a 10 km neutron star to TON 618's 1,600 AU event horizon. |
 

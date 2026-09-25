@@ -4,7 +4,7 @@ import { TopBar } from "./ui/TopBar";
 import { Navigator } from "./ui/Navigator";
 import { Inspector } from "./ui/Inspector";
 import { TimeControls } from "./ui/TimeControls";
-import { DistanceReadout, FocusHud, ScaleHud, SkyHud } from "./ui/ViewHud";
+import { CosmicHud, DistanceReadout, FocusHud, ScaleHud, SkyHud } from "./ui/ViewHud";
 import { PerfOverlay, Settings } from "./ui/Settings";
 import { Logbook, Toasts } from "./ui/Logbook";
 import { Cockpit } from "./ui/cockpit/Cockpit";
@@ -141,6 +141,7 @@ function Credits() {
           Galaxies: 2MASS Redshift Survey (Huchra et al. 2012)
         </a>
       )}
+      {level === "cosmic" && <span>Groups: Tully 2015 · nearby galaxies: Karachentsev et al. 2013</span>}
       {(level === "interstellar" || level === "cosmic") && <span>Photos: ESA/Hubble, ESA/Webb, ESO, NOIRLab (CC BY 4.0) — credits per object</span>}
       {(level === "system" || level === "focus") && (
         <a href="https://www.solarsystemscope.com/textures/" target="_blank" rel="noreferrer" className="hover:text-ink-dim">
@@ -181,6 +182,7 @@ export default function App() {
           {level === "focus" && <FocusHud />}
           {level === "scale" && <ScaleHud />}
           {level === "sky" && <SkyHud />}
+          {level === "cosmic" && <CosmicHud />}
           <Credits />
         </>
       )}

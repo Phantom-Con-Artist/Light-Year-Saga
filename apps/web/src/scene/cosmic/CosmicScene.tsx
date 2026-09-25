@@ -1,17 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import {
   AdditiveBlending,
   BackSide,
-  BufferAttribute,
-  BufferGeometry,
   Color,
   DoubleSide,
   Matrix4,
   Mesh,
   PlaneGeometry,
-  Points,
   ShaderMaterial,
   SphereGeometry,
   Sprite,
@@ -30,6 +27,8 @@ import { GalaxyDisks, radialGlowTexture } from "../common/GalaxyDisks";
 import { SkyPhotos } from "../common/SkyPhotos";
 import { useScreenPicking } from "../common/picking";
 import { ScreenLabel } from "../ScreenLabel";
+import { CosmicWeb, StructureOutline } from "./CosmicWeb";
+import { useCosmicStore } from "../../state/cosmicStore";
 
 const ORIGIN = new Vector3();
 /** Opening/overview shot: far enough out to see the cosmic web of real galaxies. */
@@ -40,104 +39,21 @@ const MAX_MLY = 160_000;
 
 const OBJECTS = CATALOG.filter((o) => o.level === "cosmic");
 const GALAXIES = OBJECTS.filter((o) => o.kind === "galaxy" && o.id !== "milky-way-cosmic");
-const MARKER_KINDS: CatalogObject["kind"][] = ["galaxy", "quasar", "cluster"];
+const MARKER_KINDS: CatalogObject["kind"][] = ["galaxy", "quasar"];
+const STRUCTURES = OBJECTS.filter((o) => o.structureIndex !== undefined || o.superclusterIndex !== undefined);
+const OTHER_OBJECTS = OBJECTS.filter((o) => !STRUCTURES.includes(o));
+const structureNames = () => (useCosmicStore.getState().structureNames ? 1 : 0);
 
 const labelRange = (o: CatalogObject) => {
   if (o.id === "observable-universe") return -1; // labelled on its shell instead
   if (o.kind === "quasar") return 40_000;
+  // Structures: names appear at the scale where each one reads as a whole.
+  if (o.kind === "group") return o.framing * 7;
+  if (o.kind === "supercluster") return o.framing * 5;
+  if (o.kind === "cluster" && o.structureIndex !== undefined) return o.framing * 14;
   if (o.kind === "void" || o.kind === "structure" || o.kind === "cluster") return o.framing * 25;
   return Math.max(o.extent * 180, 6);
 };
-
-/* ------------------------------------------------ 2MRS real galaxy survey */
-
-const surveyVertex = /* glsl */ `
-attribute float aType;
-uniform float uScale;
-uniform float uOpacity;
-varying vec3 vColor;
-varying float vAlpha;
-void main() {
-  vec4 mv = modelViewMatrix * vec4(position, 1.0);
-  gl_Position = projectionMatrix * mv;
-  // ~80,000 ly galaxy × focal length / distance.
-  float px = 0.08 * 1087.0 * uScale / max(-mv.z, 1e-3);
-  gl_PointSize = clamp(px, 1.3, 3.0);
-  vAlpha = uOpacity * min(1.0, 0.5 + px * px * 0.3);
-  // Early types (ellipticals, T <= 0) golden; spirals blue-white.
-  vColor = aType <= 0.0 ? vec3(1.0, 0.82, 0.58) : vec3(0.72, 0.8, 1.0);
-}
-`;
-const surveyFragment = /* glsl */ `
-varying vec3 vColor;
-varying float vAlpha;
-void main() {
-  vec2 c = gl_PointCoord - 0.5;
-  float a = exp(-dot(c, c) * 12.0) * vAlpha;
-  if (a < 0.005) discard;
-  gl_FragColor = vec4(vColor * a, 1.0);
-  #include <colorspace_fragment>
-}
-`;
-
-function SurveyGalaxies() {
-  const camera = useThree((s) => s.camera);
-  const [points, setPoints] = useState<Points | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    let made: Points | null = null;
-    fetch("/data/galaxies-2mrs.bin")
-      .then((r) => r.arrayBuffer())
-      .then((buf) => {
-        if (cancelled) return;
-        const raw = new Float32Array(buf);
-        const n = raw.length / 5;
-        const pos = new Float32Array(n * 3);
-        const type = new Float32Array(n);
-        for (let i = 0; i < n; i++) {
-          pos[i * 3] = raw[i * 5];
-          pos[i * 3 + 1] = raw[i * 5 + 1];
-          pos[i * 3 + 2] = raw[i * 5 + 2];
-          type[i] = raw[i * 5 + 3];
-        }
-        const g = new BufferGeometry();
-        g.setAttribute("position", new BufferAttribute(pos, 3));
-        g.setAttribute("aType", new BufferAttribute(type, 1));
-        const m = new ShaderMaterial({
-          vertexShader: surveyVertex,
-          fragmentShader: surveyFragment,
-          uniforms: { uScale: { value: 1 }, uOpacity: { value: 0 } },
-          transparent: true,
-          blending: AdditiveBlending,
-          depthTest: false,
-          depthWrite: false,
-          toneMapped: false,
-        });
-        made = new Points(g, m);
-        made.frustumCulled = false;
-        made.raycast = () => {};
-        setPoints(made);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-      made?.geometry.dispose();
-      (made?.material as ShaderMaterial | undefined)?.dispose();
-    };
-  }, []);
-
-  useFrame(({ size }, delta) => {
-    if (!points) return;
-    const u = (points.material as ShaderMaterial).uniforms;
-    u.uScale.value = size.height / 900;
-    // Fade in on load; hide when inside the Local Group, where the survey is empty.
-    const target = smoothstep(4, 25, camera.position.length());
-    u.uOpacity.value += (target - u.uOpacity.value) * Math.min(1, delta * 2);
-  });
-
-  return points ? <primitive object={points} /> : null;
-}
 
 /* ------------------------------------------------------------- Milky Way */
 
@@ -180,10 +96,13 @@ function MilkyWayDisk() {
     m.raycast = () => {};
     return m;
   }, [gl, mw]);
-  useEffect(() => () => {
-    mesh.geometry.dispose();
-    (mesh.material as ShaderMaterial).dispose();
-  }, [mesh]);
+  useEffect(
+    () => () => {
+      mesh.geometry.dispose();
+      (mesh.material as ShaderMaterial).dispose();
+    },
+    [mesh],
+  );
   return <primitive object={mesh} />;
 }
 
@@ -232,10 +151,13 @@ function Shell({ obj, color, opacity, inside = false }: { obj: CatalogObject; co
     m.raycast = () => {};
     return m;
   }, [obj, color, opacity, inside]);
-  useEffect(() => () => {
-    mesh.geometry.dispose();
-    (mesh.material as ShaderMaterial).dispose();
-  }, [mesh]);
+  useEffect(
+    () => () => {
+      mesh.geometry.dispose();
+      (mesh.material as ShaderMaterial).dispose();
+    },
+    [mesh],
+  );
   // Zoomed in on a single galaxy, a structure hundreds of Mly across would only
   // paint over it — hide it until the view is wide enough to take it in.
   const controls = useThree((s) => s.controls) as unknown as { target: Vector3 } | null;
@@ -290,7 +212,7 @@ function Structures() {
       {OBJECTS.map((o) => {
         if (o.kind === "void") return <Shell key={o.id} obj={o} color="#5a6cff" opacity={0.35} />;
         if (o.id === "observable-universe") return <Shell key={o.id} obj={o} color="#ff9ec7" opacity={0.6} inside />;
-        if (o.kind === "cluster") return <Glow key={o.id} obj={o} color="#ffd9a0" scale={o.extent * 1.4} opacity={0.35} />;
+        if (o.kind === "cluster") return <Glow key={o.id} obj={o} color="#ffd9a0" scale={o.extent * 1.6} opacity={0.16} />;
         if (o.kind === "structure") return <Glow key={o.id} obj={o} color="#ffcf8a" scale={o.extent * 2} opacity={0.25} />;
         if (o.kind === "quasar") return <Glow key={o.id} obj={o} color="#cfeaff" scale={o.framing * 0.15} opacity={0.9} />;
         return null;
@@ -338,16 +260,21 @@ function Rig() {
   );
 }
 
-/** Millions of light-years: the Local Group, famous galaxies, 43k real 2MRS galaxies, voids and quasars. */
+/**
+ * Millions of light-years: famous galaxies, 43,700 real galaxies with their
+ * groups, clusters and superclusters, voids, quasars and the edge.
+ */
 export function CosmicScene() {
   return (
     <>
       <MilkyWayDisk />
-      <SurveyGalaxies />
+      <CosmicWeb />
+      <StructureOutline />
       <GalaxyDisks objects={GALAXIES} unitScale={1} />
       <SkyPhotos objects={GALAXIES} mode="sky" />
       <Structures />
-      <CatalogLayer objects={OBJECTS} labelRange={labelRange} markerKinds={MARKER_KINDS} />
+      <CatalogLayer objects={OTHER_OBJECTS} labelRange={labelRange} markerKinds={MARKER_KINDS} />
+      <CatalogLayer objects={STRUCTURES} labelRange={labelRange} markerKinds={[]} opacity={structureNames} />
       <Picking />
       <OrbitControls
         makeDefault

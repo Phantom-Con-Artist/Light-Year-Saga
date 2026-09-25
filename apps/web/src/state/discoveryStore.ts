@@ -24,7 +24,7 @@ export const CATEGORIES: Category[] = [
   { id: "nebulae", label: "Nebulae", ids: catalogIds((o) => o.kind === "nebula") },
   { id: "worlds", label: "Alien worlds", ids: [...catalogIds((o) => o.kind === "exo-system"), ...ALL_EXOPLANETS.map((p) => p.planet.id)] },
   { id: "galaxies", label: "Galaxies", ids: catalogIds((o) => o.kind === "galaxy") },
-  { id: "cosmic", label: "Cosmic structures", ids: catalogIds((o) => o.kind === "cluster" || o.kind === "void" || o.kind === "structure") },
+  { id: "cosmic", label: "Cosmic structures", ids: catalogIds((o) => o.kind === "cluster" || o.kind === "group" || o.kind === "supercluster" || o.kind === "void" || o.kind === "structure") },
   { id: "constellations", label: "Constellations", ids: CONSTELLATIONS.map((c) => c.key) },
 ];
 

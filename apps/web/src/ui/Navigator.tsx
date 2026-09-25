@@ -151,9 +151,12 @@ function InterstellarList() {
 function CosmicList() {
   const C = (pred: (o: CatalogObject) => boolean) => items((o) => o.level === "cosmic" && pred(o));
   const groups: [string, RowItem[]][] = [
-    ["Local Group", C((o) => ["milky-way-cosmic", "lmc", "smc", "andromeda", "triangulum"].includes(o.id))],
+    ["Local Group", [...C((o) => o.id === "local-group"), ...C((o) => ["milky-way-cosmic", "lmc", "smc", "andromeda", "triangulum"].includes(o.id))]],
     ["Galaxies", C((o) => o.kind === "galaxy" && !["milky-way-cosmic", "lmc", "smc", "andromeda", "triangulum"].includes(o.id))],
-    ["Clusters & voids", C((o) => o.kind === "cluster" || o.kind === "void" || o.id === "great-attractor")],
+    ["Nearby groups", C((o) => o.kind === "group" && o.id !== "local-group")],
+    ["Galaxy clusters", C((o) => o.kind === "cluster")],
+    ["Superclusters", C((o) => o.kind === "supercluster")],
+    ["Voids & flows", C((o) => o.kind === "void" || o.id === "great-attractor")],
     ["Quasars & the edge", C((o) => o.kind === "quasar" || o.id === "observable-universe")],
   ];
   return (

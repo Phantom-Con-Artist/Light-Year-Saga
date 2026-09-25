@@ -175,6 +175,8 @@ export interface ConstellationGeometry {
   /** Per constellation id: polylines as flat [ra, dec, …] in degrees. */
   figures: Record<string, number[][]>;
   borders: [string, number[]][];
+  /** Closed outline(s) per constellation id, flat [ra, dec, …] in degrees. */
+  regions: Record<string, number[][]>;
 }
 
 interface GeometryStore {
@@ -245,4 +247,90 @@ export function figureStars(geometry: ConstellationGeometry, catalog: StarCatalo
   const list = [...found].sort((a, b) => mag(a) - mag(b));
   starCache.set(id, list);
   return list;
+}
+
+/* ------------------------------------------------ which constellation is here? */
+
+interface Region {
+  id: string;
+  /** Densified outline as unit vectors (x, y, z per vertex). */
+  ring: Float32Array;
+  /** Bounding cap: centre and cos(radius). */
+  centre: Vector3;
+  cosRadius: number;
+}
+
+const regionCache = new WeakMap<ConstellationGeometry, Region[]>();
+
+/** Outlines follow lines of constant RA or Dec: densify in RA/Dec so each edge stays short. */
+function buildRegions(geometry: ConstellationGeometry): Region[] {
+  const out: Region[] = [];
+  for (const [id, rings] of Object.entries(geometry.regions)) {
+    for (const flat of rings) {
+      const pts: Vector3[] = [];
+      const n = flat.length / 2;
+      for (let k = 0; k < n; k++) {
+        const ra0 = flat[k * 2];
+        const dec0 = flat[k * 2 + 1];
+        let ra1 = flat[((k + 1) % n) * 2];
+        const dec1 = flat[((k + 1) % n) * 2 + 1];
+        if (ra1 - ra0 > 180) ra1 -= 360;
+        else if (ra0 - ra1 > 180) ra1 += 360;
+        const steps = Math.max(1, Math.ceil(Math.max(Math.abs(ra1 - ra0) * Math.cos(((dec0 + dec1) * Math.PI) / 360), Math.abs(dec1 - dec0)) / 2));
+        for (let s = 0; s < steps; s++) pts.push(skyDirection(ra0 + ((ra1 - ra0) * s) / steps, dec0 + ((dec1 - dec0) * s) / steps));
+      }
+      const centre = pts.reduce((a, p) => a.add(p), new Vector3()).normalize();
+      // Polar regions average out near zero; any centre works as long as the cap covers the ring.
+      if (centre.lengthSq() < 0.5) centre.copy(pts[0]);
+      const cosRadius = Math.min(...pts.map((p) => p.dot(centre)));
+      const ring = new Float32Array(pts.length * 3);
+      pts.forEach((p, i) => ring.set([p.x, p.y, p.z], i * 3));
+      out.push({ id, ring, centre, cosRadius });
+    }
+  }
+  return out;
+}
+
+/**
+ * The constellation containing a direction (render-space unit vector), by
+ * winding number on the sphere: the signed angles subtended by the outline's
+ * edges add up to a full turn only for a point inside it. Works for the
+ * regions around the celestial poles too.
+ */
+export function constellationAt(geometry: ConstellationGeometry, dir: Vector3): string | null {
+  let regions = regionCache.get(geometry);
+  if (!regions) {
+    regions = buildRegions(geometry);
+    regionCache.set(geometry, regions);
+  }
+  const px = dir.x;
+  const py = dir.y;
+  const pz = dir.z;
+  for (const r of regions) {
+    if (dir.dot(r.centre) < r.cosRadius - 0.02) continue;
+    const v = r.ring;
+    const n = v.length / 3;
+    let sum = 0;
+    // Tangent-plane projection of the previous vertex.
+    let d = v[(n - 1) * 3] * px + v[(n - 1) * 3 + 1] * py + v[(n - 1) * 3 + 2] * pz;
+    let ax = v[(n - 1) * 3] - px * d;
+    let ay = v[(n - 1) * 3 + 1] - py * d;
+    let az = v[(n - 1) * 3 + 2] - pz * d;
+    for (let i = 0; i < n; i++) {
+      d = v[i * 3] * px + v[i * 3 + 1] * py + v[i * 3 + 2] * pz;
+      const bx = v[i * 3] - px * d;
+      const by = v[i * 3 + 1] - py * d;
+      const bz = v[i * 3 + 2] - pz * d;
+      // Signed angle a→b around the point: atan2(p · (a × b), a · b).
+      const cx = ay * bz - az * by;
+      const cy = az * bx - ax * bz;
+      const cz = ax * by - ay * bx;
+      sum += Math.atan2(px * cx + py * cy + pz * cz, ax * bx + ay * by + az * bz);
+      ax = bx;
+      ay = by;
+      az = bz;
+    }
+    if (Math.abs(sum) > Math.PI) return r.id;
+  }
+  return null;
 }

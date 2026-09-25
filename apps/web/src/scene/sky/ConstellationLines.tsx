@@ -7,26 +7,15 @@ import { useSkyStore } from "../../state/skyStore";
 
 export const LINE_RADIUS = 900;
 const INDEX = new Map(CONSTELLATIONS.map((c, i) => [c.id, i]));
-/** Leave a small gap where a line meets a star, as printed star charts do. */
-const GAP_DEG = 0.45;
-
-const figureVertex = /* glsl */ `
-attribute float aIdx;
-uniform float uSel;
-varying float vSel;
-void main() {
-  vSel = abs(aIdx - uSel) < 0.5 ? 1.0 : 0.0;
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-}
-`;
-
-const figureFragment = /* glsl */ `
+const lineFragment = /* glsl */ `
 uniform float uOpacity;
 uniform vec3 uColor;
 uniform vec3 uSelColor;
+uniform vec3 uHoverColor;
 varying float vSel;
+varying float vHover;
 void main() {
-  vec3 c = mix(uColor, uSelColor, vSel) * uOpacity;
+  vec3 c = mix(mix(uColor, uHoverColor, vHover), uSelColor, vSel) * uOpacity;
   gl_FragColor = vec4(c, 1.0);
   #include <colorspace_fragment>
 }
@@ -35,22 +24,26 @@ void main() {
 const borderVertex = /* glsl */ `
 attribute vec2 aPair;
 uniform float uSel;
+uniform float uHover;
 varying float vSel;
+varying float vHover;
 void main() {
   vSel = (abs(aPair.x - uSel) < 0.5 || abs(aPair.y - uSel) < 0.5) ? 1.0 : 0.0;
+  vHover = (abs(aPair.x - uHover) < 0.5 || abs(aPair.y - uHover) < 0.5) ? 1.0 : 0.0;
   gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 }
 `;
 
-const FIGURE_COLOR = new Vector3(0.2, 0.32, 0.55);
 const BORDER_COLOR = new Vector3(0.09, 0.11, 0.16);
 
 function lineMaterial(vertexShader: string, color: Vector3, selColor: Vector3) {
   return new ShaderMaterial({
     vertexShader,
-    fragmentShader: figureFragment,
+    fragmentShader: lineFragment,
     uniforms: {
       uSel: { value: -1 },
+      uHover: { value: -1 },
+      uHoverColor: { value: new Vector3(0.1, 0.16, 0.26) },
       uOpacity: { value: 1 },
       uColor: { value: color.clone() },
       uSelColor: { value: selColor },
@@ -69,39 +62,6 @@ function segments(geometry: BufferGeometry, material: ShaderMaterial | LineBasic
   l.renderOrder = renderOrder;
   l.raycast = () => {};
   return l;
-}
-
-function buildFigures(data: ConstellationGeometry) {
-  const pos: number[] = [];
-  const idx: number[] = [];
-  const a = new Vector3();
-  const b = new Vector3();
-  const gap = (GAP_DEG * Math.PI) / 180;
-  for (const [id, lines] of Object.entries(data.figures)) {
-    const n = INDEX.get(id) ?? -1;
-    for (const line of lines) {
-      for (let k = 0; k + 3 < line.length; k += 2) {
-        a.copy(skyDirection(line[k], line[k + 1]));
-        b.copy(skyDirection(line[k + 2], line[k + 3]));
-        const ang = a.angleTo(b);
-        if (ang < gap * 2.5) continue;
-        // Trim both ends along the great circle.
-        const t0 = gap / ang;
-        const p = a.clone().lerp(b, t0).normalize().multiplyScalar(LINE_RADIUS);
-        const q = a
-          .clone()
-          .lerp(b, 1 - t0)
-          .normalize()
-          .multiplyScalar(LINE_RADIUS);
-        pos.push(p.x, p.y, p.z, q.x, q.y, q.z);
-        idx.push(n, n);
-      }
-    }
-  }
-  const g = new BufferGeometry();
-  g.setAttribute("position", new BufferAttribute(new Float32Array(pos), 3));
-  g.setAttribute("aIdx", new BufferAttribute(new Float32Array(idx), 1));
-  return g;
 }
 
 /** Boundaries run along lines of constant RA or Dec, so interpolate in RA/Dec, not along great circles. */
@@ -165,16 +125,15 @@ function buildGrid() {
 const basic = (color: string, opacity: number) =>
   new LineBasicMaterial({ color, transparent: true, opacity, blending: AdditiveBlending, depthTest: false, depthWrite: false, toneMapped: false });
 
-/** Stick figures, IAU boundaries and an optional RA/Dec grid on the celestial sphere. */
+/** IAU boundaries and an optional RA/Dec grid on the celestial sphere (figures: see ConstellationFigures). */
 export function ConstellationLines({ data }: { data: ConstellationGeometry }) {
   const layers = useMemo(() => {
-    const figures = segments(buildFigures(data), lineMaterial(figureVertex, FIGURE_COLOR, new Vector3(1.0, 0.76, 0.36)), -2);
     const borders = segments(buildBorders(data), lineMaterial(borderVertex, BORDER_COLOR, new Vector3(0.42, 0.33, 0.16)), -3);
     const g = buildGrid();
     const grid = segments(g.grid, basic("#5a78a8", 0.14), -4);
     const equator = segments(g.equator, basic("#6f9ad6", 0.3), -4);
     const ecliptic = segments(g.ecliptic, basic("#d6b36f", 0.32), -4);
-    return { figures, borders, grid, equator, ecliptic };
+    return { borders, grid, equator, ecliptic };
   }, [data]);
 
   useEffect(
@@ -191,15 +150,13 @@ export function ConstellationLines({ data }: { data: ConstellationGeometry }) {
     const sky = useSkyStore.getState();
     const c = getConstellation(useSelectionStore.getState().selectedId);
     const sel = c ? (INDEX.get(c.id) ?? -1) : -1;
-    // With a layer switched off, the selected constellation still shows its own figure and outline.
-    const fig = layers.figures.material as ShaderMaterial;
-    fig.uniforms.uSel.value = sel;
-    fig.uniforms.uColor.value.copy(FIGURE_COLOR).multiplyScalar(sky.figures ? 1 : 0);
-    layers.figures.visible = sky.figures || sel >= 0;
+    const hover = sky.hovered ? (INDEX.get(sky.hovered) ?? -1) : -1;
+    // With borders off, the selected and hovered constellations still show their own outline.
     const bor = layers.borders.material as ShaderMaterial;
     bor.uniforms.uSel.value = sel;
+    bor.uniforms.uHover.value = hover;
     bor.uniforms.uColor.value.copy(BORDER_COLOR).multiplyScalar(sky.borders ? 1 : 0);
-    layers.borders.visible = sky.borders || sel >= 0;
+    layers.borders.visible = sky.borders || sel >= 0 || hover >= 0;
     layers.grid.visible = layers.equator.visible = layers.ecliptic.visible = sky.grid;
   });
 
@@ -209,7 +166,6 @@ export function ConstellationLines({ data }: { data: ConstellationGeometry }) {
       <primitive object={layers.equator} />
       <primitive object={layers.ecliptic} />
       <primitive object={layers.borders} />
-      <primitive object={layers.figures} />
     </>
   );
 }

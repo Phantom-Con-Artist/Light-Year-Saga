@@ -13,6 +13,8 @@ export type CatalogKind =
   | "stellar-remnant"
   | "nebula"
   | "cluster"
+  | "group"
+  | "supercluster"
   | "void"
   | "structure"
   | "exo-system";
@@ -111,6 +113,10 @@ export interface CatalogObject {
   visualNote?: string;
   sources: ExternalSource[];
   keywords?: string;
+  /** Galaxy groups and clusters: index into the cosmic-web structure list (per-galaxy membership). */
+  structureIndex?: number;
+  /** Superclusters: index into the cosmic-web supercluster list. */
+  superclusterIndex?: number;
 }
 
 /** A body the close-up view can render at true scale. */

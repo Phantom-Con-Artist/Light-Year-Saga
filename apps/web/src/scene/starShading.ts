@@ -1,4 +1,4 @@
-import type { IUniform } from "three";
+import { AdditiveBlending, BufferAttribute, BufferGeometry, Points, ShaderMaterial, type IUniform } from "three";
 import { graphics } from "../state/graphicsStore";
 
 /**
@@ -8,6 +8,10 @@ import { graphics } from "../state/graphicsStore";
  * Cost is kept to a few ALU ops per fragment; faint stars stay 2–3 px and
  * only the few hundred brightest get large sprites. Per-star randomness comes
  * from gl_VertexID, so it needs no extra attribute memory.
+ *
+ * Glow ("bloom" without a post-processing pass): the same stars drawn a second
+ * time, only those well above the visibility limit, several times larger and
+ * faint, in their own colour. Additive blending adds overlapping halos up.
  */
 
 export const starUniforms = (): Record<string, IUniform> => ({
@@ -17,6 +21,8 @@ export const starUniforms = (): Record<string, IUniform> => ({
   uStarSize: { value: 1 },
   uStarGain: { value: 1 },
   uPixelRatio: { value: 1 },
+  uGlow: { value: 1 },
+  uGlowPass: { value: 0 },
 });
 
 /** Copy the current graphics settings into a star material's uniforms. */
@@ -28,6 +34,7 @@ export function syncStarUniforms(u: Record<string, IUniform>, time: number, pixe
   u.uStarSize.value = g.starSize;
   u.uStarGain.value = g.starBrightness;
   u.uPixelRatio.value = pixelRatio;
+  u.uGlow.value = g.starGlow ? g.glowStrength : 0;
 }
 
 /**
@@ -41,6 +48,8 @@ uniform float uSpikes;
 uniform float uStarSize;
 uniform float uStarGain;
 uniform float uPixelRatio;
+uniform float uGlow;
+uniform float uGlowPass;
 varying float vIntensity;
 varying float vHalo;
 varying float vSpike;
@@ -61,12 +70,29 @@ void starSprite(float flux, float fade) {
 
   // Twinkle: two incommensurate waves per star, at its own pace.
   float tw = 1.0 + uTwinkle * (0.55 * sin(uTime * (1.3 + 3.1 * r1) + r2 * 6.2832) + 0.35 * sin(uTime * (4.7 + 2.3 * r2) + r3 * 6.2832));
+  // A third of the stars occasionally flare: a slow wave raised to a high power spends
+  // most of its time low and peaks briefly.
+  float w = 0.5 + 0.5 * sin(uTime * (0.5 + 1.2 * r3) + r1 * 60.0);
+  tw += uTwinkle * 0.9 * pow(w, 12.0) * step(0.66, r2);
   float f = flux * uStarGain * (0.8 + 0.4 * r3);
   vIntensity = min(f, 1.0) * fade * max(tw, 0.15);
 
   // Brighter than the limit: grow the sprite rather than saturating it.
   float grow = pow(max(f, 1.0), 0.18);
   float base = clamp(2.2 * grow, 2.2, 44.0) * uStarSize * (0.8 + 0.45 * r1);
+
+  if (uGlowPass > 0.5) {
+    // Only stars well above the limit glow, growing with brightness.
+    float g = smoothstep(1.5, 14.0, f) * uGlow;
+    vIntensity = fade * max(tw, 0.3) * 0.2 * g;
+    gl_PointSize = clamp(base * 3.6 * (1.0 + 0.12 * log(max(f, 1.0))), 6.0, 120.0) * uPixelRatio;
+    vHalo = 0.0;
+    vSpike = 0.0;
+    vExpand = 1.0;
+    vRot = vec2(1.0, 0.0);
+    if (vIntensity < 0.003) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+    return;
+  }
   vHalo = clamp((grow - 1.4) / 6.0, 0.0, 1.0);
   vSpike = clamp((grow - 1.9) / 5.0, 0.0, 1.0) * uSpikes * (0.75 + 0.25 * tw);
   // Spikes need room beyond the halo; the core keeps its pixel size.
@@ -112,3 +138,71 @@ void main() {
   #include <colorspace_fragment>
 }
 `;
+
+/** Soft halo for the glow pass: a wide Gaussian in the star's own colour, no white core. */
+export const starGlowFragment = /* glsl */ `
+varying vec3 vColor;
+varying float vIntensity;
+
+void main() {
+  vec2 c = (gl_PointCoord - 0.5) * 2.0;
+  float r2 = dot(c, c);
+  if (r2 > 1.0) discard;
+  float a = exp(-r2 * 4.5) * (1.0 - r2) * vIntensity;
+  if (a < 0.002) discard;
+  gl_FragColor = vec4(vColor * a, 1.0);
+  #include <colorspace_fragment>
+}
+`;
+
+export interface StarPoints {
+  main: Points;
+  glow: Points;
+  uniforms: Record<string, IUniform>;
+  dispose: () => void;
+}
+
+/**
+ * A star layer as two draws: crisp stars, and a glow pass underneath that
+ * shares their uniforms (every per-frame update reaches both). `glowIndex`
+ * limits the glow pass to stars that can ever get bright, so a million-star
+ * layer doesn't run its vertex shader twice.
+ */
+export function createStarPoints(
+  geometry: BufferGeometry,
+  vertexShader: string,
+  uniforms: Record<string, IUniform>,
+  opts: { depthTest?: boolean; renderOrder?: number; glowIndex?: Uint32Array } = {},
+): StarPoints {
+  const common = { vertexShader, transparent: true, blending: AdditiveBlending, depthTest: opts.depthTest ?? false, depthWrite: false, toneMapped: false };
+  const mainMaterial = new ShaderMaterial({ ...common, fragmentShader: starFragment, uniforms });
+  const glowMaterial = new ShaderMaterial({ ...common, fragmentShader: starGlowFragment, uniforms: { ...uniforms, uGlowPass: { value: 1 } } });
+
+  let glowGeometry = geometry;
+  if (opts.glowIndex) {
+    glowGeometry = new BufferGeometry();
+    for (const [name, attr] of Object.entries(geometry.attributes)) glowGeometry.setAttribute(name, attr);
+    // Indexed points keep gl_VertexID equal to the star's index, so both passes twinkle together.
+    glowGeometry.setIndex(new BufferAttribute(opts.glowIndex, 1));
+  }
+
+  const make = (g: BufferGeometry, m: ShaderMaterial, order: number) => {
+    const p = new Points(g, m);
+    p.frustumCulled = false;
+    p.renderOrder = order;
+    p.raycast = () => {};
+    return p;
+  };
+  const order = opts.renderOrder ?? 0;
+  return {
+    main: make(geometry, mainMaterial, order),
+    glow: make(glowGeometry, glowMaterial, order - 0.5),
+    uniforms,
+    dispose: () => {
+      geometry.dispose();
+      if (glowGeometry !== geometry) glowGeometry.dispose();
+      mainMaterial.dispose();
+      glowMaterial.dispose();
+    },
+  };
+}
