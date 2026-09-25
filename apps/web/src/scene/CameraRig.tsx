@@ -1,11 +1,13 @@
 import { useEffect, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
-import { Vector3 } from "three";
+import { Quaternion, Vector3 } from "three";
 import { OBJECTS_BY_ID, getObject } from "../data/solarSystem";
 import { useViewStore } from "../state/viewStore";
 import { useSelectionStore } from "../state/selectionStore";
 import { useCameraStore } from "../state/cameraStore";
-import { getRenderPosition, getRenderRadius } from "./renderRegistry";
+import { getBodyOrientation, getRenderPosition, getRenderRadius, regionRenderRadius } from "./renderRegistry";
+import { getFeature } from "../data/solar/features";
+import { featureWorldNormal } from "./solar/SurfaceFeatures";
 
 /** The subset of OrbitControls this rig drives. */
 interface Controls {
@@ -32,14 +34,37 @@ interface Flight {
   elapsed: number;
 }
 
+const IDENTITY = new Quaternion();
+const dq = new Quaternion();
+const inv = new Quaternion();
+const offset = new Vector3();
+
+/** A view 55° above the ecliptic, keeping the current compass direction. */
+function regionView(from: Vector3): Vector3 {
+  const h = new Vector3(from.x, 0, from.z);
+  if (h.lengthSq() < 1e-6) h.set(0, 0, 1);
+  h.normalize().multiplyScalar(Math.cos(0.96));
+  return h.setY(Math.sin(0.96)).normalize();
+}
+
 const easeInOutCubic = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
-/** Comfortable viewing distance for a body, accounting for rings. */
+/** Comfortable viewing distance for a body, accounting for rings; regions are framed whole. */
 function framingDistance(id: string): number {
   const obj = getObject(id);
+  if (obj?.type === "region") return regionRenderRadius(id) * (obj.parentId === "earth" ? 3 : obj.id === "oort-cloud" ? 1 : 1.9);
   const r = getRenderRadius(id);
   const extent = obj?.visual.rings ? obj.visual.rings.outerRadii : 1;
+  // Comets: stand back far enough to see the tail.
+  if (obj?.type === "comet") return Math.max(r * 7, 4);
   return r * extent * (obj?.type === "star" ? 5 : 7);
+}
+
+/** What the camera centres on: regions around the Sun centre on the Sun, Earth's satellites on Earth. */
+function anchorOf(id: string): string | null {
+  const obj = getObject(id);
+  if (obj?.type === "region") return obj.parentId && obj.parentId !== "sun" ? obj.parentId : null;
+  return id;
 }
 
 /**
@@ -52,6 +77,8 @@ export function CameraRig() {
   const flight = useRef<Flight | null>(null);
   const trackId = useRef<string | null>(null);
   const lastTrackPos = useRef(new Vector3());
+  const spinWith = useRef<string | null>(null);
+  const lastSpin = useRef(new Quaternion());
 
   const startFlight = (id: string | null, endDistance: number, endDir: Vector3 | null, duration: number) => {
     if (!controls) return;
@@ -87,9 +114,19 @@ export function CameraRig() {
     () =>
       useSelectionStore.subscribe((s, prev) => {
         if (s.focusRequest === prev.focusRequest) return;
-        if (s.selectedId && OBJECTS_BY_ID.has(s.selectedId))
-          startFlight(s.selectedId, framingDistance(s.selectedId), null, FLIGHT_SECONDS);
-        else trackId.current = null;
+        const feature = getFeature(s.selectedId);
+        spinWith.current = null;
+        if (feature) {
+          // Swing round so the feature faces the camera, then turn with the body.
+          startFlight(feature.bodyId, getRenderRadius(feature.bodyId) * 3.2, featureWorldNormal(feature), FLIGHT_SECONDS);
+          spinWith.current = feature.bodyId;
+          lastSpin.current.copy(getBodyOrientation(feature.bodyId) ?? IDENTITY);
+        } else if (s.selectedId && OBJECTS_BY_ID.has(s.selectedId)) {
+          const obj = getObject(s.selectedId)!;
+          // Belts and bubbles read best from above the ecliptic.
+          const dir = obj.type === "region" && obj.parentId === "sun" ? regionView(camera.position) : null;
+          startFlight(anchorOf(s.selectedId), framingDistance(s.selectedId), dir, FLIGHT_SECONDS);
+        } else trackId.current = null;
       }),
     [controls],
   );
@@ -125,6 +162,18 @@ export function CameraRig() {
     }
 
     if (trackId.current) lastTrackPos.current.copy(getRenderPosition(trackId.current));
+
+    // Keep a selected surface feature under the camera as its body rotates.
+    const spinId = spinWith.current;
+    const q = spinId ? getBodyOrientation(spinId) : undefined;
+    if (spinId && q && trackId.current === spinId) {
+      dq.copy(q).multiply(inv.copy(lastSpin.current).invert());
+      if (!f) {
+        offset.copy(camera.position).sub(controls.target).applyQuaternion(dq);
+        camera.position.copy(controls.target).add(offset);
+      } else f.endDir.applyQuaternion(dq);
+      lastSpin.current.copy(q);
+    }
   });
 
   return null;

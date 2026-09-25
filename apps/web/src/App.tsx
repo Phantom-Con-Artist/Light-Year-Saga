@@ -4,6 +4,7 @@ import { TopBar } from "./ui/TopBar";
 import { Navigator } from "./ui/Navigator";
 import { Inspector } from "./ui/Inspector";
 import { TimeControls } from "./ui/TimeControls";
+import { SolarHud } from "./ui/SolarHud";
 import { CosmicHud, DistanceReadout, FocusHud, ScaleHud, SkyHud } from "./ui/ViewHud";
 import { PerfOverlay, Settings } from "./ui/Settings";
 import { Logbook, Toasts } from "./ui/Logbook";
@@ -115,7 +116,7 @@ function TransitionOverlay() {
 function Credits() {
   const level = useViewStore((s) => s.level);
   return (
-    <div className="fixed bottom-4 left-4 z-10 hidden flex-col gap-0.5 text-[11px] text-ink-faint xl:flex">
+    <div className={`fixed bottom-4 z-10 hidden flex-col gap-0.5 text-[11px] text-ink-faint xl:flex ${level === "system" ? "right-4 items-end" : "left-4"}`}>
       {level === "sky" && (
         <>
           <a href="https://github.com/astronexus/HYG-Database" target="_blank" rel="noreferrer" className="hover:text-ink-dim">
@@ -146,6 +147,11 @@ function Credits() {
       {(level === "system" || level === "focus") && (
         <a href="https://www.solarsystemscope.com/textures/" target="_blank" rel="noreferrer" className="hover:text-ink-dim">
           {TEXTURE_CREDIT}
+        </a>
+      )}
+      {level === "system" && (
+        <a href="https://ssd.jpl.nasa.gov/" target="_blank" rel="noreferrer" className="hover:text-ink-dim">
+          Orbits: NASA/JPL Small-Body Database &amp; Horizons · satellites: CelesTrak
         </a>
       )}
       <span>Music: “Weightless Wonder”</span>
@@ -179,6 +185,7 @@ export default function App() {
           <Inspector />
           {(level === "system" || level === "focus") && <TimeControls />}
           <DistanceReadout />
+          {level === "system" && <SolarHud />}
           {level === "focus" && <FocusHud />}
           {level === "scale" && <ScaleHud />}
           {level === "sky" && <SkyHud />}

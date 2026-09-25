@@ -30,6 +30,8 @@ interface TimeState {
   slower: () => void;
   toggleDirection: () => void;
   resetToNow: () => void;
+  /** Jump the clock (clamped to the simulation window) and slow to a watchable rate. */
+  jumpTo: (ms: number, rateIndex?: number) => void;
 }
 
 export const useTimeStore = create<TimeState>()((set, get) => ({
@@ -50,6 +52,8 @@ export const useTimeStore = create<TimeState>()((set, get) => ({
   slower: () => set((s) => ({ rateIndex: Math.max(s.rateIndex - 1, 0) })),
   toggleDirection: () => set((s) => ({ direction: s.direction === 1 ? -1 : 1 })),
   resetToNow: () => set({ timeMs: Date.now(), rateIndex: 0, direction: 1, paused: false }),
+  jumpTo: (ms, rateIndex = 2) =>
+    set({ timeMs: Math.min(MAX_TIME_MS, Math.max(MIN_TIME_MS, ms)), rateIndex, direction: 1, paused: false }),
 }));
 
 /** Simulated seconds per real second, signed. */

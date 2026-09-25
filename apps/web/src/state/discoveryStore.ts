@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { SOLAR_SYSTEM } from "../data/solarSystem";
+import { FEATURES } from "../data/solar/features";
 import { ALL_EXOPLANETS, CATALOG, type CatalogObject } from "../data/catalog";
 import { isStarId } from "../data/stars";
 import { CONSTELLATIONS } from "../data/constellations";
@@ -18,7 +19,10 @@ export interface Category {
 const catalogIds = (pred: (o: CatalogObject) => boolean) => CATALOG.filter((o) => o.id !== "milky-way-cosmic" && pred(o)).map((o) => o.id);
 
 export const CATEGORIES: Category[] = [
-  { id: "solar", label: "Solar System", ids: SOLAR_SYSTEM.map((o) => o.id) },
+  { id: "solar", label: "Sun, planets & moons", ids: SOLAR_SYSTEM.filter((o) => o.type === "star" || o.type === "planet" || o.type === "moon").map((o) => o.id) },
+  { id: "minor", label: "Dwarf planets, asteroids & comets", ids: SOLAR_SYSTEM.filter((o) => o.type === "dwarf-planet" || o.type === "asteroid" || o.type === "comet").map((o) => o.id) },
+  { id: "craft", label: "Spacecraft & regions", ids: SOLAR_SYSTEM.filter((o) => o.type === "spacecraft" || o.type === "space-station" || o.type === "telescope" || o.type === "region").map((o) => o.id) },
+  { id: "features", label: "Mountains & landmarks", ids: FEATURES.map((f) => f.id) },
   { id: "stars", label: "Extreme stars & remnants", ids: catalogIds((o) => o.kind === "star" || o.kind === "stellar-remnant") },
   { id: "black-holes", label: "Black holes & quasars", ids: catalogIds((o) => o.kind === "black-hole" || o.kind === "quasar") },
   { id: "nebulae", label: "Nebulae", ids: catalogIds((o) => o.kind === "nebula") },
@@ -38,6 +42,7 @@ export const RANKS = [
   { at: 40, title: "Pathfinder" },
   { at: 65, title: "Cosmic Cartographer" },
   { at: 110, title: "Keeper of the Stars" },
+  { at: 170, title: "Heliopause Crosser" },
 ];
 
 export function rankFor(count: number) {

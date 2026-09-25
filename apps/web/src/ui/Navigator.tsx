@@ -3,6 +3,7 @@ import { useUiStore } from "../state/uiStore";
 import { useIsMobile } from "./useMedia";
 import { Icon } from "./Icon";
 import { SOLAR_SYSTEM } from "../data/solarSystem";
+import { FEATURES, type SurfaceFeature } from "../data/solar/features";
 import { CATALOG, type CatalogObject } from "../data/catalog";
 import { starDistanceLy, starId, starName, useStarStore, type StarCatalog } from "../data/stars";
 import { resolveCloseUp } from "../data/closeUp";
@@ -70,17 +71,66 @@ const catalogItem = (o: CatalogObject): RowItem => ({
 });
 const items = (pred: (o: CatalogObject) => boolean) => CATALOG.filter(pred).map(catalogItem);
 
+const CRAFT = new Set(["spacecraft", "space-station", "telescope"]);
+
 function SolarSystemList() {
-  const roots = SOLAR_SYSTEM.filter((o) => !o.parentId);
-  const childrenOf = (id: string) => SOLAR_SYSTEM.filter((o) => o.parentId === id);
-  const toItem = (o: SpaceObject): RowItem => ({ id: o.id, name: o.name, accent: o.visual.accent });
-  const renderTree = (obj: SpaceObject, depth: number): ReactNode => (
-    <li key={obj.id}>
-      <Row item={toItem(obj)} depth={depth} />
-      {childrenOf(obj.id).length > 0 && <ul>{childrenOf(obj.id).map((c) => renderTree(c, obj.type === "star" ? depth : depth + 1))}</ul>}
-    </li>
+  const toItem = (o: SpaceObject, detail?: string): RowItem => ({ id: o.id, name: o.name, accent: o.visual.accent, detail });
+  const moonsOf = (id: string) => SOLAR_SYSTEM.filter((o) => o.parentId === id && o.type === "moon");
+  const withMoons = (obj: SpaceObject) => {
+    const moons = moonsOf(obj.id);
+    return (
+      <li key={obj.id}>
+        <Row item={toItem(obj, moons.length > 1 ? `${moons.length} moons` : undefined)} />
+        {moons.length > 0 && (
+          <ul>
+            {moons.map((m) => (
+              <li key={m.id}>
+                <Row item={toItem(m)} depth={1} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </li>
+    );
+  };
+  const list = (objs: SpaceObject[], detail?: (o: SpaceObject) => string | undefined) =>
+    objs.map((o) => (
+      <li key={o.id}>
+        <Row item={toItem(o, detail?.(o))} />
+      </li>
+    ));
+  const of = (pred: (o: SpaceObject) => boolean) => SOLAR_SYSTEM.filter(pred);
+  const featureBody = (f: SurfaceFeature) => SOLAR_SYSTEM.find((o) => o.id === f.bodyId)?.name ?? "";
+
+  return (
+    <>
+      <Group title="Sun & planets">{of((o) => o.type === "star" || o.type === "planet").map(withMoons)}</Group>
+      <Group title="Dwarf planets">{of((o) => o.type === "dwarf-planet").map(withMoons)}</Group>
+      <Group title="Asteroids" defaultOpen={false}>
+        {list(of((o) => o.type === "asteroid" && !o.interstellar))}
+      </Group>
+      <Group title="Comets" defaultOpen={false}>
+        {list(of((o) => o.type === "comet" && !o.interstellar))}
+      </Group>
+      <Group title="Interstellar visitors" defaultOpen={false}>
+        {list(of((o) => !!o.interstellar))}
+      </Group>
+      <Group title="Spacecraft" defaultOpen={false}>
+        {list(
+          of((o) => CRAFT.has(o.type)),
+          (o) => (o.parentId === "earth" ? "Earth" : undefined),
+        )}
+      </Group>
+      <Group title="Regions">{list(of((o) => o.type === "region"))}</Group>
+      <Group title="Mountains & landmarks" defaultOpen={false}>
+        {FEATURES.map((f) => (
+          <li key={f.id}>
+            <Row item={{ id: f.id, name: f.name, accent: "#ffd9a0", detail: featureBody(f) }} />
+          </li>
+        ))}
+      </Group>
+    </>
   );
-  return <Group title="Solar System">{roots.map((r) => renderTree(r, 0))}</Group>;
 }
 
 function starItem(catalog: StarCatalog, i: number): RowItem {

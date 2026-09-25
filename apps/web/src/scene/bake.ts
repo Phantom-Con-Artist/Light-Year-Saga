@@ -81,7 +81,8 @@ function bakeSurface(
 /** Texture width by body importance / typical on-screen size. */
 function bakeWidthFor(type: string, style: SurfaceStyle): number {
   if (type === "star" || style === "banded" || style === "terran") return 2048;
-  return 1024;
+  // Moons, dwarf planets and small bodies are rarely seen large.
+  return type === "planet" ? 1024 : 512;
 }
 
 const cache = new Map<string, WebGLRenderTarget>();

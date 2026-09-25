@@ -1,4 +1,9 @@
 import type { ExternalSource, SpaceObject } from "../domain/types";
+import { registerCenters } from "../astronomy/ephemeris";
+import { MOONS } from "./solar/moons";
+import { ASTEROIDS, COMETS, DWARF_PLANETS } from "./solar/smallBodies";
+import { SPACECRAFT } from "./solar/spacecraft";
+import { REGIONS } from "./solar/regions";
 
 const FACT_SHEET: ExternalSource = {
   provider: "NASA",
@@ -16,7 +21,8 @@ const EPHEMERIS: ExternalSource = {
 
 const sources = [FACT_SHEET, EPHEMERIS];
 
-export const SOLAR_SYSTEM: SpaceObject[] = [
+/** The Sun, the eight planets and our Moon. */
+const PLANETS: SpaceObject[] = [
   {
     id: "sun",
     name: "Sun",
@@ -25,6 +31,7 @@ export const SOLAR_SYSTEM: SpaceObject[] = [
     description:
       "The star at the centre of the Solar System, holding 99.86% of its mass. Its fusion core converts about 4 million tonnes of matter into energy every second.",
     physical: {
+      rotation: { poleRa: 286.13, poleDec: 63.87, w0: 84.176, wDot: 14.1844 },
       meanRadiusKm: 695_700,
       massKg: 1.989e30,
       surfaceGravityMs2: 274,
@@ -45,6 +52,7 @@ export const SOLAR_SYSTEM: SpaceObject[] = [
     description:
       "The smallest planet and closest to the Sun. A heavily cratered world with almost no atmosphere and temperature swings of over 600 °C.",
     physical: {
+      rotation: { poleRa: 281.0103, poleDec: 61.4155, w0: 329.5988, wDot: 6.1385108 },
       meanRadiusKm: 2439.7,
       massKg: 3.301e23,
       surfaceGravityMs2: 3.7,
@@ -66,6 +74,7 @@ export const SOLAR_SYSTEM: SpaceObject[] = [
     description:
       "Shrouded in sulphuric-acid clouds over a crushing CO₂ atmosphere, Venus is the hottest planet and rotates backwards, slower than it orbits.",
     physical: {
+      rotation: { poleRa: 272.76, poleDec: 67.16, w0: 160.2, wDot: -1.4813688 },
       meanRadiusKm: 6051.8,
       massKg: 4.867e24,
       surfaceGravityMs2: 8.9,
@@ -93,6 +102,7 @@ export const SOLAR_SYSTEM: SpaceObject[] = [
     description:
       "Our home world — the only known body harbouring life, with liquid surface oceans, plate tectonics and a protective magnetic field.",
     physical: {
+      rotation: { poleRa: 0, poleDec: 90, w0: 190.147, wDot: 360.9856235 },
       meanRadiusKm: 6371.0,
       massKg: 5.972e24,
       surfaceGravityMs2: 9.8,
@@ -120,6 +130,7 @@ export const SOLAR_SYSTEM: SpaceObject[] = [
     description:
       "Earth's only natural satellite, tidally locked so the same hemisphere always faces us. Twelve humans walked its surface between 1969 and 1972.",
     physical: {
+      rotation: { poleRa: 269.9949, poleDec: 66.5392, w0: 38.3213, wDot: 13.17635815 },
       meanRadiusKm: 1737.4,
       massKg: 7.342e22,
       surfaceGravityMs2: 1.6,
@@ -141,6 +152,7 @@ export const SOLAR_SYSTEM: SpaceObject[] = [
     description:
       "The red planet: iron-oxide deserts, the tallest volcano in the Solar System (Olympus Mons) and ancient river valleys hinting at a wetter past.",
     physical: {
+      rotation: { poleRa: 317.68143, poleDec: 52.8865, w0: 176.63, wDot: 350.89198226 },
       meanRadiusKm: 3389.5,
       massKg: 6.417e23,
       surfaceGravityMs2: 3.7,
@@ -168,6 +180,7 @@ export const SOLAR_SYSTEM: SpaceObject[] = [
     description:
       "The largest planet — more than twice the mass of all the others combined. Its Great Red Spot is a storm wider than Earth that has raged for centuries.",
     physical: {
+      rotation: { poleRa: 268.056595, poleDec: 64.495303, w0: 284.95, wDot: 870.536 },
       meanRadiusKm: 69_911,
       massKg: 1.898e27,
       surfaceGravityMs2: 23.1,
@@ -195,6 +208,7 @@ export const SOLAR_SYSTEM: SpaceObject[] = [
     description:
       "The ringed jewel of the Solar System. Its rings are mostly water ice, spanning ~280,000 km yet typically only about 10 m thick.",
     physical: {
+      rotation: { poleRa: 40.589, poleDec: 83.537, w0: 38.9, wDot: 810.7939024 },
       meanRadiusKm: 58_232,
       massKg: 5.683e26,
       surfaceGravityMs2: 9.0,
@@ -223,6 +237,7 @@ export const SOLAR_SYSTEM: SpaceObject[] = [
     description:
       "An ice giant tipped on its side, rolling around the Sun with an axial tilt of about 98°. Methane in its atmosphere gives its cyan hue.",
     physical: {
+      rotation: { poleRa: 257.311, poleDec: -15.175, w0: 203.81, wDot: -501.1600928 },
       meanRadiusKm: 25_362,
       massKg: 8.681e25,
       surfaceGravityMs2: 8.7,
@@ -250,6 +265,7 @@ export const SOLAR_SYSTEM: SpaceObject[] = [
     description:
       "The outermost planet, with the fastest winds in the Solar System — over 2,000 km/h. It was the first planet found by mathematical prediction.",
     physical: {
+      rotation: { poleRa: 299.36, poleDec: 43.46, w0: 249.978, wDot: 541.1397757 },
       meanRadiusKm: 24_622,
       massKg: 1.024e26,
       surfaceGravityMs2: 11.0,
@@ -270,6 +286,12 @@ export const SOLAR_SYSTEM: SpaceObject[] = [
   },
 ];
 
+/**
+ * Everything in the Solar System view, parents before children (the render
+ * registry relies on that order).
+ */
+export const SOLAR_SYSTEM: SpaceObject[] = [...PLANETS, ...DWARF_PLANETS, ...MOONS, ...ASTEROIDS, ...COMETS, ...SPACECRAFT, ...REGIONS];
+
 export const OBJECTS_BY_ID: ReadonlyMap<string, SpaceObject> = new Map(
   SOLAR_SYSTEM.map((o) => [o.id, o]),
 );
@@ -277,3 +299,5 @@ export const OBJECTS_BY_ID: ReadonlyMap<string, SpaceObject> = new Map(
 export function getObject(id: string | null | undefined): SpaceObject | undefined {
   return id ? OBJECTS_BY_ID.get(id) : undefined;
 }
+
+registerCenters(SOLAR_SYSTEM);

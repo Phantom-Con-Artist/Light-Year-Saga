@@ -1,24 +1,14 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
-import {
-  AdditiveBlending,
-  BufferAttribute,
-  BufferGeometry,
-  Color,
-  Line,
-  ShaderMaterial,
-  Vector3,
-  type Group,
-} from "three";
+import { AdditiveBlending, BufferAttribute, BufferGeometry, Color, Line, ShaderMaterial, Vector3, type Group } from "three";
 import type { SpaceObject } from "../domain/types";
 import { OBJECTS_BY_ID } from "../data/solarSystem";
-import { sampleOrbit } from "../astronomy/ephemeris";
-import { heliocentricToRender, localToRender, type RenderTuple } from "../astronomy/scale";
+import { orbitBucketMs, orbitGeometry } from "../astronomy/orbits";
+import { onTrajectoriesLoaded } from "../astronomy/trajectories";
 import { useTimeStore } from "../state/timeStore";
 import { useSelectionStore } from "../state/selectionStore";
-import { getRenderPosition } from "./renderRegistry";
-
-const YEAR_MS = 365.25 * 86_400_000;
+import { layerOn, useSolarStore } from "../state/solarStore";
+import { getRenderPosition, isPresent } from "./renderRegistry";
 
 const orbitVertex = /* glsl */ `
 attribute float aPhase;
@@ -44,34 +34,58 @@ void main() {
 }
 `;
 
-/**
- * Orbits are resampled only when the simulation clock crosses a coarse time
- * bucket — orbital shapes barely change, and sampling is the costly part.
- */
-function bucketMs(obj: SpaceObject): number {
-  return obj.ephemeris.kind === "geocentric-moon" ? 30 * 86_400_000 : 5 * YEAR_MS;
+const DEEP_SPACE = new Set(["voyager-1", "voyager-2", "pioneer-10", "pioneer-11", "new-horizons"]);
+/** Orbiters show only the stretch of track around the current date (days either side). */
+const TRACK_WINDOW_DAYS: Record<string, number> = { juno: 30, cassini: 30, "parker-solar-probe": 120, jwst: 120 };
+
+/** Resting opacity by kind; small bodies' orbits appear only when focused. */
+function restingOpacity(obj: SpaceObject): number {
+  switch (obj.type) {
+    case "planet":
+      return 0.35;
+    case "dwarf-planet":
+      return 0.26;
+    case "moon":
+      return 0.28;
+    case "comet":
+      return 0.16;
+    case "spacecraft":
+    case "telescope":
+      // Only the deep-space probes' long voyages by default; orbiters would scribble over their planets.
+      return DEEP_SPACE.has(obj.id) ? 0.16 : 0;
+    case "space-station":
+      return 0.25;
+    default:
+      return 0;
+  }
+}
+
+function firstAtOrAbove(a: Float32Array, v: number): number {
+  let lo = 0;
+  let hi = a.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (a[mid] < v) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
 }
 
 export function OrbitPath({ obj }: { obj: SpaceObject }) {
   const group = useRef<Group>(null!);
-  const isMoon = obj.ephemeris.kind === "geocentric-moon";
   const parent = obj.parentId ? OBJECTS_BY_ID.get(obj.parentId) : undefined;
-  const bucketSize = bucketMs(obj);
-  const bucket = useTimeStore((s) => Math.floor(s.timeMs / bucketSize));
+  const bucketSize = orbitBucketMs(obj);
+  const bucket = useTimeStore((s) => (Number.isFinite(bucketSize) ? Math.floor(s.timeMs / bucketSize) : 0));
   const selected = useSelectionStore((s) => s.selectedId === obj.id);
   const hovered = useSelectionStore((s) => s.hoveredId === obj.id);
+  const [loads, setLoads] = useState(0);
+  useEffect(() => (obj.ephemeris.kind === "trajectory" ? onTrajectoriesLoaded(() => setLoads((n) => n + 1)) : undefined), [obj]);
 
-  const positions = useMemo(() => {
-    const samples = sampleOrbit(obj, new Date(bucket * bucketSize), isMoon ? 120 : 360);
-    const arr = new Float32Array(samples.length * 3);
-    const tmp: RenderTuple = [0, 0, 0];
-    samples.forEach((p, i) => {
-      if (isMoon) localToRender(p, parent!.physical.meanRadiusKm, tmp);
-      else heliocentricToRender(p, tmp);
-      arr.set(tmp, i * 3);
-    });
-    return arr;
-  }, [obj, bucket, bucketSize, isMoon, parent]);
+  const geometry = useMemo(() => {
+    const date = new Date(Number.isFinite(bucketSize) ? bucket * bucketSize : useTimeStore.getState().timeMs);
+    return orbitGeometry(obj, date, parent?.physical.meanRadiusKm ?? 1);
+    // `loads` re-runs this once trajectories arrive.
+  }, [obj, bucket, bucketSize, parent, loads]);
 
   const material = useMemo(
     () =>
@@ -81,7 +95,7 @@ export function OrbitPath({ obj }: { obj: SpaceObject }) {
         uniforms: {
           uColor: { value: new Color(obj.visual.accent) },
           uPhase: { value: 0 },
-          uOpacity: { value: 0.35 },
+          uOpacity: { value: 0 },
         },
         transparent: true,
         blending: AdditiveBlending,
@@ -91,54 +105,76 @@ export function OrbitPath({ obj }: { obj: SpaceObject }) {
   );
 
   const line = useMemo(() => {
-    const geom = new BufferGeometry();
-    const l = new Line(geom, material);
+    const l = new Line(new BufferGeometry(), material);
     l.raycast = () => {};
     l.frustumCulled = false;
     return l;
   }, [material]);
 
   useEffect(() => {
-    const n = positions.length / 3;
-    const phase = new Float32Array(n);
-    for (let i = 0; i < n; i++) phase[i] = i / (n - 1);
-    line.geometry.setAttribute("position", new BufferAttribute(positions, 3));
-    line.geometry.setAttribute("aPhase", new BufferAttribute(phase, 1));
-    line.geometry.computeBoundingSphere();
-  }, [line, positions]);
+    if (!geometry) return;
+    line.geometry.setAttribute("position", new BufferAttribute(geometry.positions, 3));
+    line.geometry.setAttribute("aPhase", new BufferAttribute(geometry.phases, 1));
+    line.geometry.setDrawRange(0, geometry.phases.length);
+  }, [line, geometry]);
 
-  useEffect(() => () => line.geometry.dispose(), [line]);
+  useEffect(
+    () => () => {
+      line.geometry.dispose();
+      material.dispose();
+    },
+    [line, material],
+  );
 
   const probe = useMemo(() => new Vector3(), []);
+  const resting = restingOpacity(obj);
 
   useFrame((_, delta) => {
-    const bodyPos = getRenderPosition(obj.id);
-    if (isMoon && parent) {
-      group.current.position.copy(getRenderPosition(parent.id));
-      probe.copy(bodyPos).sub(group.current.position);
-    } else {
-      probe.copy(bodyPos);
+    if (!geometry) {
+      line.visible = false;
+      return;
     }
+    const layers = useSolarStore.getState();
+    const shown = selected || hovered || (layers.orbits && layerOn(obj, layers) && isPresent(obj.id));
+    const target = !shown ? 0 : selected ? 0.9 : hovered ? 0.6 : resting;
+    const u = material.uniforms.uOpacity;
+    u.value += (target - u.value) * Math.min(1, delta * 6);
+    line.visible = u.value > 0.004;
+    if (!line.visible) return;
 
-    // Find where along the sampled loop the body currently sits.
-    const n = positions.length / 3;
+    const relativeTo = geometry.relativeTo;
+    if (relativeTo) group.current.position.copy(getRenderPosition(relativeTo));
+    else group.current.position.set(0, 0, 0);
+
+    if (geometry.phaseAt) {
+      const now = useTimeStore.getState().timeMs;
+      material.uniforms.uPhase.value = geometry.phaseAt(now);
+      const w = TRACK_WINDOW_DAYS[obj.id];
+      if (w) {
+        // Phases rise with time along a track: draw only the samples within the window.
+        const lo = firstAtOrAbove(geometry.phases, geometry.phaseAt(now - w * 86_400_000));
+        const hi = firstAtOrAbove(geometry.phases, geometry.phaseAt(now + w * 86_400_000));
+        line.geometry.setDrawRange(Math.max(0, lo - 1), Math.max(0, hi - lo + 2));
+      }
+      return;
+    }
+    // Otherwise find where along the sampled loop the body currently sits.
+    probe.copy(getRenderPosition(obj.id)).sub(group.current.position);
+    const pos = geometry.positions;
+    const n = pos.length / 3;
     let best = 0;
     let bestD = Infinity;
     for (let i = 0; i < n; i++) {
-      const dx = positions[i * 3] - probe.x;
-      const dy = positions[i * 3 + 1] - probe.y;
-      const dz = positions[i * 3 + 2] - probe.z;
+      const dx = pos[i * 3] - probe.x;
+      const dy = pos[i * 3 + 1] - probe.y;
+      const dz = pos[i * 3 + 2] - probe.z;
       const d = dx * dx + dy * dy + dz * dz;
       if (d < bestD) {
         bestD = d;
         best = i;
       }
     }
-    material.uniforms.uPhase.value = best / (n - 1);
-
-    const target = selected ? 0.9 : hovered ? 0.6 : 0.35;
-    const u = material.uniforms.uOpacity;
-    u.value += (target - u.value) * Math.min(1, delta * 6);
+    material.uniforms.uPhase.value = geometry.phases[best];
   });
 
   return (

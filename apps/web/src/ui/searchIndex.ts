@@ -1,4 +1,5 @@
-import { SOLAR_SYSTEM } from "../data/solarSystem";
+import { OBJECTS_BY_ID, SOLAR_SYSTEM } from "../data/solarSystem";
+import { FEATURES, FEATURE_KIND_LABEL } from "../data/solar/features";
 import { ALL_EXOPLANETS, CATALOG, CATALOG_KIND_LABEL } from "../data/catalog";
 import { starDistanceLy, starId, starName, type StarCatalog } from "../data/stars";
 import { formatNumber } from "./format";
@@ -22,7 +23,14 @@ export function buildSearchIndex(catalog: StarCatalog | null): SearchEntry[] {
       name: o.name,
       detail: o.classification,
       accent: o.visual.accent,
-      keywords: `${o.id} ${o.type} ${o.classification}`.toLowerCase(),
+      keywords: `${o.id} ${o.type} ${o.classification}${o.interstellar ? " interstellar" : ""}`.toLowerCase(),
+    })),
+    ...FEATURES.map((f) => ({
+      id: f.id,
+      name: f.name,
+      detail: `${FEATURE_KIND_LABEL[f.kind]} · ${OBJECTS_BY_ID.get(f.bodyId)?.name ?? ""}`,
+      accent: "#ffd9a0",
+      keywords: `${f.kind} ${f.bodyId} feature landmark`.toLowerCase(),
     })),
     ...CATALOG.filter((o) => o.id !== "milky-way-cosmic").map((o) => ({
       id: o.id,
@@ -68,7 +76,7 @@ export function search(entries: SearchEntry[], catalog: StarCatalog | null, quer
   const q = query.trim().toLowerCase();
   if (!q) {
     // A taste of everything when the box is empty.
-    const picks = ["earth", "saturn", "con-Ori", "betelgeuse", "orion-nebula", "pillars-of-creation", "trappist-1", "andromeda", "ton-618", "bootes-void"];
+    const picks = ["earth", "saturn", "iss", "voyager-1", "halley", "feature-olympus-mons", "con-Ori", "betelgeuse", "orion-nebula", "pillars-of-creation", "trappist-1", "andromeda", "ton-618", "bootes-void"];
     return picks.map((id) => entries.find((e) => e.id === id || e.name.toLowerCase() === id)).filter((e): e is SearchEntry => !!e);
   }
 

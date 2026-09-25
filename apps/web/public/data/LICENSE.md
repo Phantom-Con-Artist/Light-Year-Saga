@@ -27,3 +27,11 @@ Olaf Frohn (https://github.com/ofrohn/d3-celestial), BSD 3-Clause licence:
 > DAMAGES ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE.
 
 To regenerate it, run `node scripts/build-constellations.mjs`.
+
+## Solar System (`small-bodies-*.bin`, `spacecraft.bin`, `satellites.bin`)
+
+Built by `scripts/build-solar-system.mjs`.
+
+- Asteroid, comet and trans-Neptunian orbits, sizes and discovery details: NASA/JPL Small-Body Database (https://ssd.jpl.nasa.gov/tools/sbdb_query.html). US Government work, public domain.
+- Moon orbits and spacecraft trajectories: NASA/JPL Horizons (https://ssd.jpl.nasa.gov/horizons/). Public domain.
+- Earth satellite orbital elements: CelesTrak (https://celestrak.org), from US Space Force data. Refreshed live in the browser when online.

@@ -4,33 +4,40 @@ import { getObject } from "../data/solarSystem";
 import {
   AU_KM,
   LIGHT_SPEED_KM_S,
-  geocentricMoon,
+  existsAt,
+  frameCenter,
   heliocentricPosition,
   length,
+  relativePosition,
   sub,
 } from "../astronomy/ephemeris";
 import { useTimeStore } from "../state/timeStore";
 
 export interface Telemetry {
+  /** False when the object isn't in space at this time (before launch, after re-entry…). */
+  present: boolean;
   /** Distance from the Sun, AU (undefined for the Sun itself). */
   sunDistanceAu?: number;
   /** Distance from Earth, AU (undefined for Earth itself). */
   earthDistanceAu?: number;
   /** One-way light time from Earth, seconds. */
   lightTimeFromEarthS?: number;
-  /** Speed relative to the parent body, km/s. */
+  /** Speed relative to the body it orbits (the Sun for heliocentric objects), km/s. */
   orbitalSpeedKmS?: number;
+  /** For moons and satellites: the planet, its centre distance and the height above its surface. */
+  parent?: { name: string; distanceKm: number; altitudeKm: number };
 }
 
 const REFRESH_MS = 200;
-const VELOCITY_STEP_S = 60;
+const VELOCITY_STEP_S = 10;
 
 function compute(obj: SpaceObject, timeMs: number): Telemetry {
+  if (!existsAt(obj, timeMs)) return { present: false };
   const date = new Date(timeMs);
   const earth = getObject("earth")!;
   const pos = heliocentricPosition(obj, date);
   const earthPos = heliocentricPosition(earth, date);
-  const t: Telemetry = {};
+  const t: Telemetry = { present: true };
 
   if (obj.type !== "star") t.sunDistanceAu = length(pos);
   if (obj.id !== "earth") {
@@ -39,12 +46,15 @@ function compute(obj: SpaceObject, timeMs: number): Telemetry {
   }
 
   if (obj.ephemeris.kind !== "fixed-origin") {
-    const later = new Date(timeMs + VELOCITY_STEP_S * 1000);
-    const displacement =
-      obj.ephemeris.kind === "geocentric-moon"
-        ? sub(geocentricMoon(later), geocentricMoon(date))
-        : sub(heliocentricPosition(obj, later), pos);
-    t.orbitalSpeedKmS = (length(displacement) * AU_KM) / VELOCITY_STEP_S;
+    const now = relativePosition(obj, date);
+    const later = relativePosition(obj, new Date(timeMs + VELOCITY_STEP_S * 1000));
+    if (now && later) t.orbitalSpeedKmS = (length(sub(later, now)) * AU_KM) / VELOCITY_STEP_S;
+    const center = frameCenter(obj);
+    const parent = center ? getObject(center) : undefined;
+    if (parent && now) {
+      const distanceKm = length(now) * AU_KM;
+      t.parent = { name: parent.name, distanceKm, altitudeKm: distanceKm - parent.physical.meanRadiusKm };
+    }
   }
   return t;
 }

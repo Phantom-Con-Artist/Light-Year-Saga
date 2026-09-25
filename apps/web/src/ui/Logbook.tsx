@@ -1,4 +1,5 @@
 import { SOLAR_SYSTEM } from "../data/solarSystem";
+import { getFeature } from "../data/solar/features";
 import { getCatalogObject, getExoPlanet } from "../data/catalog";
 import { getConstellation } from "../data/constellations";
 import { MISSIONS } from "../data/missions";
@@ -9,7 +10,7 @@ import { focusObject } from "../state/navigation";
 import { Icon } from "./Icon";
 
 function nameOf(id: string): string {
-  return SOLAR_SYSTEM.find((o) => o.id === id)?.name ?? getCatalogObject(id)?.name ?? getExoPlanet(id)?.planet.name ?? getConstellation(id)?.name ?? id;
+  return SOLAR_SYSTEM.find((o) => o.id === id)?.name ?? getCatalogObject(id)?.name ?? getExoPlanet(id)?.planet.name ?? getConstellation(id)?.name ?? getFeature(id)?.name ?? id;
 }
 
 /** Personal exploration log: discoveries by category, rank, mission badges. */

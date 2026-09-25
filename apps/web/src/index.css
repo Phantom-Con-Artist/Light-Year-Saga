@@ -646,3 +646,46 @@
     padding-bottom: max(0.5rem, env(safe-area-inset-bottom)) !important;
   }
 }
+
+@layer components {
+  /* Solar System regions (heliosphere, Oort cloud) and surface features. */
+  .region-label {
+    translate: -50% -50%;
+    white-space: nowrap;
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgb(160 190 255 / 0.55);
+    text-shadow: 0 1px 3px rgb(0 0 0 / 0.9);
+    user-select: none;
+    pointer-events: none;
+  }
+  .region-label--dim {
+    color: rgb(160 170 255 / 0.38);
+  }
+  .feature-label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    translate: -3.5px -50%;
+    padding: 1px 3px;
+    background: none;
+    border: 0;
+    white-space: nowrap;
+    font-size: 11px;
+    color: rgb(255 228 190 / 0.72);
+    text-shadow: 0 1px 3px rgb(0 0 0 / 0.95);
+  }
+  .feature-label__dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    border: 1.5px solid #ffd9a0;
+    background: rgb(0 0 0 / 0.35);
+  }
+  .feature-label:hover,
+  .feature-label[data-active="true"] {
+    color: #fff;
+  }
+}

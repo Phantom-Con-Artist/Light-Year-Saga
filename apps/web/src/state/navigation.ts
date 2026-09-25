@@ -1,4 +1,5 @@
 import { OBJECTS_BY_ID } from "../data/solarSystem";
+import { getFeature } from "../data/solar/features";
 import { getCatalogObject, getExoPlanet, hasCloseUp } from "../data/catalog";
 import { isStarId } from "../data/stars";
 import { isConstellationId } from "../data/constellations";
@@ -11,7 +12,7 @@ export function levelOf(id: string): ViewLevel | null {
     const level = useViewStore.getState().level;
     return level === "system" || level === "interstellar" ? null : "system";
   }
-  if (OBJECTS_BY_ID.has(id)) return "system";
+  if (OBJECTS_BY_ID.has(id) || getFeature(id)) return "system";
   if (isConstellationId(id)) return "sky";
   // Catalogue stars are shown in the sky view too; stay there when looking at one.
   if (isStarId(id)) return useViewStore.getState().level === "sky" ? null : "interstellar";

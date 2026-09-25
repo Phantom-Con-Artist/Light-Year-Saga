@@ -19,6 +19,12 @@ import { selectObject, useSelectionStore } from "../state/selectionStore";
 import { canVisitUpClose, focusObject, visitUpClose } from "../state/navigation";
 import { useViewStore } from "../state/viewStore";
 import { useTelemetry } from "./useTelemetry";
+import { useTimeStore } from "../state/timeStore";
+import { trackSpan } from "../astronomy/trajectories";
+import { satelliteStatus } from "../astronomy/satellites";
+import { FEATURES, FEATURE_KIND_LABEL, featuresOf, getFeature, type SurfaceFeature } from "../data/solar/features";
+import { SATELLITE_GROUPS, SMALL_BODY_CLASSES } from "../data/solar/regions";
+import { SATELLITES, SMALL_BODY_COUNTS } from "../data/solar/elements.gen";
 import { formatDays, formatDuration, formatLightTime, formatNumber, formatScientific } from "./format";
 import { Icon } from "./Icon";
 
@@ -216,26 +222,107 @@ function VisitButton({ id, label = "Visit up close — true scale" }: { id: stri
 function Telemetry({ obj }: { obj: SpaceObject }) {
   const t = useTelemetry(obj);
   if (!t) return null;
-  const moon = obj.type === "moon";
+  if (!t.present) return <NotPresent obj={obj} />;
+  const around = t.parent;
   return (
     <Grid>
-      {t.sunDistanceAu !== undefined && !moon && <Stat label="From Sun" value={formatNumber(t.sunDistanceAu, 3)} unit="AU" />}
+      {around && <Stat label={`From ${around.name}'s centre`} value={formatNumber(around.distanceKm, 0)} unit="km" />}
+      {around && obj.ephemeris.kind === "tle" && <Stat label="Altitude" value={formatNumber(around.altitudeKm, 0)} unit="km" />}
+      {t.sunDistanceAu !== undefined && !around && <Stat label="From Sun" value={formatNumber(t.sunDistanceAu, t.sunDistanceAu < 10 ? 3 : 1)} unit="AU" />}
       {t.earthDistanceAu !== undefined &&
-        (moon ? (
+        obj.parentId !== "earth" &&
+        (t.earthDistanceAu < 0.01 ? (
           <Stat label="From Earth" value={formatNumber(t.earthDistanceAu * AU_KM, 0)} unit="km" />
         ) : (
-          <Stat label="From Earth" value={formatNumber(t.earthDistanceAu, 3)} unit="AU" />
+          <Stat label="From Earth" value={formatNumber(t.earthDistanceAu, t.earthDistanceAu < 10 ? 3 : 1)} unit="AU" />
         ))}
-      {t.lightTimeFromEarthS !== undefined && <Stat label="Light time from Earth" value={formatLightTime(t.lightTimeFromEarthS)} />}
-      {t.orbitalSpeedKmS !== undefined && <Stat label={moon ? "Speed around Earth" : "Orbital speed"} value={formatNumber(t.orbitalSpeedKmS, 2)} unit="km/s" />}
+      {t.lightTimeFromEarthS !== undefined && obj.parentId !== "earth" && <Stat label="Light time from Earth" value={formatLightTime(t.lightTimeFromEarthS)} />}
+      {t.orbitalSpeedKmS !== undefined && (
+        <Stat label={around ? `Speed around ${around.name}` : "Speed around the Sun"} value={formatNumber(t.orbitalSpeedKmS, 2)} unit="km/s" />
+      )}
+    </Grid>
+  );
+}
+
+/** Before launch, after the end of a mission, or outside the data's range. */
+function NotPresent({ obj }: { obj: SpaceObject }) {
+  const ms = useTimeStore((s) => s.timeMs);
+  const from = obj.active?.from ?? (obj.ephemeris.kind === "trajectory" ? spanIso(obj.ephemeris.track, "start") : undefined);
+  const to = obj.active?.to ?? (obj.ephemeris.kind === "trajectory" ? spanIso(obj.ephemeris.track, "end") : undefined);
+  const before = !!from && ms < Date.parse(from);
+  const target = before ? from : to;
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <p className="text-[13px] text-ink-dim">{before ? `Not launched yet at this date (from ${from}).` : `Not tracked at this date (data ends ${to}).`}</p>
+      {target && (
+        <button type="button" className="btn shrink-0" onClick={() => useTimeStore.getState().jumpTo(Date.parse(target) + (before ? 86_400_000 : -86_400_000))}>
+          Go there
+        </button>
+      )}
+    </div>
+  );
+}
+
+function spanIso(track: string, which: "start" | "end"): string | undefined {
+  const span = trackSpan(track);
+  if (!span) return undefined;
+  return new Date(((which === "start" ? span.startJd : span.endJd) - 2440587.5) * 86_400_000).toISOString().slice(0, 10);
+}
+
+/** Satellites: how fresh the orbit is. */
+function SatelliteStatus({ id }: { id: string }) {
+  const ms = useTimeStore((s) => Math.floor(s.timeMs / 60_000) * 60_000);
+  const st = satelliteStatus(id, ms);
+  if (!st) return null;
+  return (
+    <p className="mt-2.5 text-[12px] leading-relaxed text-ink-faint">
+      Orbit from a CelesTrak element set of {new Date(st.epochMs).toISOString().slice(0, 10)} ({st.live ? "fetched live" : "bundled"}), propagated with SGP4.
+      {!st.precise && " This date is far from the element set, so the position along the orbit is approximate; the orbit's shape and tilt stay right."}
+    </p>
+  );
+}
+
+function Moments({ obj }: { obj: SpaceObject }) {
+  if (!obj.moments?.length) return null;
+  return (
+    <Section title="Jump to" note="sets the clock">
+      <ul className="-mx-1.5 space-y-0.5">
+        {obj.moments.map((m) => (
+          <li key={m.label + m.date}>
+            <button
+              type="button"
+              className="flex w-full items-baseline justify-between gap-2 rounded-md px-1.5 py-1 text-left hover:bg-white/[0.06]"
+              onClick={() => {
+                useTimeStore.getState().jumpTo(Date.parse(m.date), obj.type === "comet" ? 4 : 2);
+                focusObject(obj.id);
+              }}
+            >
+              <span className="text-[13.5px] text-ink">{m.label}</span>
+              <span className="shrink-0 text-[12px] text-ink-faint tabular-nums">{m.date}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </Section>
+  );
+}
+
+function Facts({ rows }: { rows: [string, string][] }) {
+  return (
+    <Grid>
+      {rows.map(([label, value]) => (
+        <Stat key={label} label={label} value={value} />
+      ))}
     </Grid>
   );
 }
 
 function Physical({ obj }: { obj: SpaceObject }) {
   const p = obj.physical;
-  const rows: [string, string, string?][] = [["Radius", formatNumber(p.meanRadiusKm, 0), "km"]];
-  if (obj.type !== "star") rows.push(["Size vs Earth", `${formatNumber(p.meanRadiusKm / R_EARTH_KM, 2)} ×`]);
+  const small = p.meanRadiusKm < 5;
+  const rows: [string, string, string?][] = [small ? ["Radius", formatNumber(p.meanRadiusKm * 1000, 0), "m"] : ["Radius", formatNumber(p.meanRadiusKm, 0), "km"]];
+  if (obj.type !== "star" && !small) rows.push(["Size vs Earth", `${formatNumber(p.meanRadiusKm / R_EARTH_KM, p.meanRadiusKm < 300 ? 3 : 2)} ×`]);
+  if (p.tidallyLocked && obj.type === "moon") rows.push(["Rotation", "Tidally locked"]);
   if (p.massKg) rows.push(["Mass", formatScientific(p.massKg), "kg"]);
   if (p.surfaceGravityMs2) rows.push(["Gravity", formatNumber(p.surfaceGravityMs2, 1), "m/s²"]);
   if (p.rotationPeriodHours) rows.push([p.rotationPeriodHours < 0 ? "Day (retrograde)" : "Day length", formatDuration(p.rotationPeriodHours)]);
@@ -253,9 +340,14 @@ function Physical({ obj }: { obj: SpaceObject }) {
 
 const DATA_FOOTNOTE = "Missions, observations and imagery will appear here once NASA/MAST data is connected.";
 
+const CRAFT_TYPES = new Set(["spacecraft", "space-station", "telescope"]);
+
 function BodyInspector({ obj }: { obj: SpaceObject }) {
   const parent = getObject(obj.parentId);
   const level = useViewStore((s) => s.level);
+  if (obj.type === "region") return <RegionInspector obj={obj} />;
+  const craft = CRAFT_TYPES.has(obj.type);
+  const features = featuresOf(obj.id);
   return (
     <Shell
       id={obj.id}
@@ -263,7 +355,7 @@ function BodyInspector({ obj }: { obj: SpaceObject }) {
       subtitle={
         <>
           {obj.classification}
-          {parent && ` · orbits ${parent.name}`}
+          {parent && parent.id !== "sun" && ` · ${craft ? "around" : "orbits"} ${parent.name}`}
         </>
       }
       action={obj.id === "sun" ? <VisitButton id="sun" label="Compare the Sun — true scale" /> : null}
@@ -271,15 +363,193 @@ function BodyInspector({ obj }: { obj: SpaceObject }) {
       {level === "system" && (
         <Section title="Position" note="at simulation time">
           <Telemetry obj={obj} />
+          {obj.ephemeris.kind === "tle" && <SatelliteStatus id={obj.ephemeris.satellite} />}
         </Section>
       )}
-      <Section title="Physical">
-        <Physical obj={obj} />
-      </Section>
+      {!craft && (
+        <Section title="Physical">
+          <Physical obj={obj} />
+        </Section>
+      )}
+      {obj.facts && obj.facts.length > 0 && (
+        <Section title={craft ? "Mission" : "Facts"}>
+          <Facts rows={obj.facts} />
+        </Section>
+      )}
+      <Moments obj={obj} />
+      {features.length > 0 && (
+        <Section title="Surface features">
+          <ul className="-mx-1.5 space-y-0.5">
+            {features.map((f) => (
+              <li key={f.id}>
+                <button
+                  type="button"
+                  className="flex w-full items-baseline justify-between gap-2 rounded-md px-1.5 py-1 text-left hover:bg-white/[0.06]"
+                  onClick={() => selectObject(f.id)}
+                >
+                  <span className="text-[13.5px] text-ink">{f.name}</span>
+                  <span className="shrink-0 text-[12px] text-ink-faint">{featureDetail(f)}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
       <Section title="About">
         <p className="text-[14px] leading-relaxed text-ink-dim">{obj.description}</p>
       </Section>
-      <Sources sources={obj.sources} footnote={DATA_FOOTNOTE} />
+      <Sources sources={obj.sources} footnote={obj.type === "planet" ? DATA_FOOTNOTE : undefined} />
+    </Shell>
+  );
+}
+
+function featureDetail(f: SurfaceFeature): string {
+  if (f.heightKm !== undefined) return `${f.heightKm > 0 ? "" : "−"}${formatNumber(Math.abs(f.heightKm), 1)} km`;
+  if (f.sizeKm) return `${formatNumber(f.sizeKm)} km across`;
+  return FEATURE_KIND_LABEL[f.kind];
+}
+
+/* ---------------------------------------------------------- features & regions */
+
+function FeatureInspector({ f }: { f: SurfaceFeature }) {
+  const body = getObject(f.bodyId)!;
+  const peaks = FEATURES.filter((x) => (x.heightKm ?? 0) > 0).sort((a, b) => b.heightKm! - a.heightKm!);
+  const max = peaks[0]?.heightKm ?? 1;
+  const rows: [string, string][] = [
+    ["Type", FEATURE_KIND_LABEL[f.kind]],
+    ["Location", `${formatNumber(Math.abs(f.lat), 1)}° ${f.lat >= 0 ? "N" : "S"}, ${formatNumber(((f.lon % 360) + 360) % 360, 1)}° E`],
+  ];
+  if (f.heightKm !== undefined) rows.push([f.heightKm > 0 ? "Height" : "Depth", `${formatNumber(Math.abs(f.heightKm), 2)} km`]);
+  if (f.sizeKm) rows.push(["Size", `${formatNumber(f.sizeKm)} km`]);
+  if (f.heightKm && f.heightKm > 0 && f.id !== "feature-everest") rows.push(["vs Everest", `${formatNumber(f.heightKm / 8.849, 1)} ×`]);
+  return (
+    <Shell id={f.id} title={f.name} subtitle={`${FEATURE_KIND_LABEL[f.kind]} on ${body.name}`}>
+      <Section title="Facts">
+        <Facts rows={rows} />
+      </Section>
+      <Section title="About">
+        <p className="text-[14px] leading-relaxed text-ink-dim">{f.description}</p>
+        <button type="button" className="btn mt-3" onClick={() => selectObject(body.id)}>
+          About {body.name}
+        </button>
+      </Section>
+      {f.heightKm !== undefined && f.heightKm > 0 && (
+        <Section title="Tallest peaks in the Solar System" note="relief, km">
+          <ul className="space-y-1.5">
+            {peaks.map((p) => (
+              <li key={p.id}>
+                <button type="button" className="group block w-full text-left" onClick={() => selectObject(p.id)}>
+                  <div className="flex items-baseline justify-between gap-2 text-[12.5px]">
+                    <span className={p.id === f.id ? "text-ink" : "text-ink-dim group-hover:text-ink"}>
+                      {p.name} <span className="text-ink-faint">· {getObject(p.bodyId)?.name}</span>
+                    </span>
+                    <span className="text-ink-faint tabular-nums">{formatNumber(p.heightKm!, 1)}</span>
+                  </div>
+                  <div className="mt-0.5 h-1.5 rounded-full bg-white/[0.06]">
+                    <div className="h-full rounded-full" style={{ width: `${(p.heightKm! / max) * 100}%`, background: p.id === f.id ? "#ffc861" : "#8a94a6" }} />
+                  </div>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
+      <Sources sources={body.sources} />
+    </Shell>
+  );
+}
+
+function Legend({ items }: { items: { label: string; color: string; count?: number }[] }) {
+  return (
+    <ul className="space-y-1">
+      {items.map((it) => (
+        <li key={it.label} className="flex items-center gap-2 text-[12.5px] text-ink-dim">
+          <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: it.color }} />
+          <span className="truncate">{it.label}</span>
+          {it.count !== undefined && <span className="ml-auto text-ink-faint tabular-nums">{formatNumber(it.count)}</span>}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Solar-wind ram pressure falls as 1/r²; the termination shock sits where it meets the interstellar pressure. */
+function PressureChart() {
+  const W = 290;
+  const H = 120;
+  const r0 = 0.3;
+  const r1 = 300;
+  const p0 = 1e-5;
+  const p1 = 20;
+  const x = (r: number) => (Math.log10(r / r0) / Math.log10(r1 / r0)) * W;
+  const y = (p: number) => H - (Math.log10(p / p0) / Math.log10(p1 / p0)) * H;
+  // nPa: 5 protons/cm³ at 400 km/s at 1 AU.
+  const ram = (r: number) => 1.34 / (r * r);
+  const ism = 1.65e-4;
+  const pts = [0.3, 1, 3, 10, 30, 90].map((r) => `${x(r).toFixed(1)},${y(ram(r)).toFixed(1)}`).join(" ");
+  return (
+    <figure>
+      <svg viewBox={`0 0 ${W} ${H + 16}`} className="w-full" role="img" aria-label="Solar wind pressure against distance from the Sun">
+        <line x1={0} x2={W} y1={y(ism)} y2={y(ism)} stroke="#8fb8ff" strokeDasharray="3 3" strokeWidth={1} />
+        <polyline points={pts} fill="none" stroke="#ffc861" strokeWidth={1.5} />
+        <line x1={x(90)} x2={x(90)} y1={0} y2={H} stroke="#ffb070" strokeWidth={1} opacity={0.6} />
+        <circle cx={x(1)} cy={y(ram(1))} r={2.5} fill="#5fb4ff" />
+        <text x={x(1) + 5} y={y(ram(1)) - 4} fill="#9aa3b2" fontSize={9}>
+          Earth
+        </text>
+        <text x={x(90) - 4} y={10} fill="#ffb070" fontSize={9} textAnchor="end">
+          termination shock
+        </text>
+        <text x={4} y={y(ism) - 4} fill="#8fb8ff" fontSize={9}>
+          interstellar pressure
+        </text>
+        {[1, 10, 100].map((r) => (
+          <text key={r} x={x(r)} y={H + 12} fill="#6b7383" fontSize={9} textAnchor="middle">
+            {r} AU
+          </text>
+        ))}
+      </svg>
+      <figcaption className="mt-1 text-[12px] leading-relaxed text-ink-faint">
+        The wind's push (ρv²) falls with the square of distance. Near 90 AU it has dropped to the pressure of the interstellar gas, and the wind is shocked down to a crawl.
+      </figcaption>
+    </figure>
+  );
+}
+
+function RegionInspector({ obj }: { obj: SpaceObject }) {
+  const counts = SMALL_BODY_COUNTS.byClass;
+  const classes = (ids: number[]) => ids.map((i) => ({ ...SMALL_BODY_CLASSES[i], count: counts[i] }));
+  return (
+    <Shell id={obj.id} title={obj.name} subtitle={obj.classification}>
+      {obj.facts && (
+        <Section title="Facts">
+          <Facts rows={obj.facts} />
+        </Section>
+      )}
+      {obj.id === "asteroid-belt" && (
+        <Section title="Colour key" note="known objects">
+          <Legend items={classes([0, 1, 2, 3, 4, 5])} />
+        </Section>
+      )}
+      {obj.id === "kuiper-belt" && (
+        <Section title="Colour key" note="known objects">
+          <Legend items={classes([6, 7, 8, 9, 10])} />
+        </Section>
+      )}
+      {obj.id === "earth-satellites" && (
+        <Section title="Colour key">
+          <Legend items={SATELLITE_GROUPS.map((g, i) => ({ ...g, count: SATELLITES.counts[i] }))} />
+        </Section>
+      )}
+      {obj.id === "heliosphere" && (
+        <Section title="Pressure balance">
+          <PressureChart />
+        </Section>
+      )}
+      <Section title="About">
+        <p className="text-[14px] leading-relaxed text-ink-dim">{obj.description}</p>
+      </Section>
+      <Sources sources={obj.sources} />
     </Shell>
   );
 }
@@ -531,6 +801,8 @@ export function Inspector() {
   if (!selectedId) return null;
   const body = getObject(selectedId);
   if (body) return <BodyInspector key={body.id} obj={body} />;
+  const feature = getFeature(selectedId);
+  if (feature) return <FeatureInspector key={feature.id} f={feature} />;
   const c = getCatalogObject(selectedId);
   if (c) return <CatalogInspector key={c.id} obj={c} />;
   const planet = getExoPlanet(selectedId);

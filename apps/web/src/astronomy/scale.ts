@@ -21,9 +21,13 @@ const DISTANCE_EXPONENT = 0.5;
 const RADIUS_SCALE = 0.03;
 const RADIUS_EXPONENT = 0.4;
 
-/** Moons: distance from parent measured in parent radii, then compressed. */
-const MOON_BASE = 1.5;
-const MOON_SCALE = 0.35;
+/**
+ * Moons and satellites: distance from the parent in parent radii, compressed
+ * logarithmically so a whole moon system (Io at 6 radii to Phoebe at 220)
+ * stays readable, orbits keep their order, and Saturn's moons clear its rings.
+ */
+const MOON_BASE = 1.25;
+const MOON_LOG = 1.3;
 
 export type RenderTuple = [number, number, number];
 
@@ -49,6 +53,14 @@ export function heliocentricToRender(v: Vec3, out: RenderTuple = [0, 0, 0]): Ren
   return axisMap(v, renderDistance(d) / d, out);
 }
 
+/** Inverse of renderDistance: scene units → AU. */
+export function auFromRender(d: number): number {
+  return Math.pow(d / DISTANCE_SCALE, 1 / DISTANCE_EXPONENT);
+}
+
+/** Parameters of the local (moon) mapping, for shaders that reproduce it. */
+export const LOCAL_MAPPING = { base: MOON_BASE, log: MOON_LOG };
+
 /** Offset of a moon from its parent (AU) → scene offset from the parent. */
 export function localToRender(
   offsetAu: Vec3,
@@ -58,6 +70,6 @@ export function localToRender(
   const d = length(offsetAu);
   if (d === 0) return axisMap(offsetAu, 0, out);
   const radii = (d * AU_KM) / parentRadiusKm;
-  const rendered = renderRadius(parentRadiusKm) * (MOON_BASE + MOON_SCALE * Math.sqrt(radii));
+  const rendered = renderRadius(parentRadiusKm) * (MOON_BASE + MOON_LOG * Math.log(Math.max(radii, 1)));
   return axisMap(offsetAu, rendered / d, out);
 }
