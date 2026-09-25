@@ -91,3 +91,20 @@ export function skyPlaneBasis(ra: string | number, dec: string | number, northDe
     normal: equatorialToRender(n.clone().negate()),
   };
 }
+
+const EQ_X = equatorialToRender(new Vector3(1, 0, 0));
+const EQ_Y = equatorialToRender(new Vector3(0, 1, 0));
+const EQ_Z = equatorialToRender(new Vector3(0, 0, 1));
+
+/** Render-space unit vector toward the north celestial pole. */
+export const CELESTIAL_NORTH = EQ_Z.clone();
+
+/** Render-space direction → J2000 RA/Dec in degrees (RA 0…360). */
+export function renderToRaDec(v: Vector3): { raDeg: number; decDeg: number } {
+  const n = v.clone().normalize();
+  const x = n.dot(EQ_X);
+  const y = n.dot(EQ_Y);
+  const z = n.dot(EQ_Z);
+  const ra = (Math.atan2(y, x) * 180) / Math.PI;
+  return { raDeg: (ra + 360) % 360, decDeg: (Math.asin(Math.max(-1, Math.min(1, z))) * 180) / Math.PI };
+}

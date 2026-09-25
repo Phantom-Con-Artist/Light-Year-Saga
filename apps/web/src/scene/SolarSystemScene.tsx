@@ -16,6 +16,8 @@ import { usePickProvider, useScreenPicking } from "./common/picking";
 import { projectToScreen } from "./common/project";
 import { getRenderPosition, getRenderRadius } from "./renderRegistry";
 import { isTouchDevice } from "../ui/useMedia";
+import { useStarStore } from "../data/stars";
+import { SkyStars } from "./common/SkyStars";
 
 /**
  * Touch: planets can be a few pixels wide, so taps are matched in screen space
@@ -68,6 +70,7 @@ function ExitToStars() {
 
 export function SolarSystemScene() {
   const camera = useThree((s) => s.camera) as PerspectiveCamera;
+  const catalog = useStarStore((s) => s.catalog);
 
   useEffect(() => {
     camera.near = 0.05;
@@ -78,6 +81,8 @@ export function SolarSystemScene() {
   return (
     <>
       <SkyDome />
+      {/* The photo already holds these stars; this layer adds their sparkle. Planets hide them. */}
+      {catalog && <SkyStars catalog={catalog} radius={3000} followCamera depthTest limitMag={() => 3.6} renderOrder={-9} />}
       <EclipticGrid />
 
       {SOLAR_SYSTEM.map((obj) =>
@@ -93,15 +98,7 @@ export function SolarSystemScene() {
 
       <SelectionReticle />
       {isTouchDevice() && <TouchPicking />}
-      <OrbitControls
-        makeDefault
-        enableDamping
-        dampingFactor={0.07}
-        rotateSpeed={0.5}
-        zoomSpeed={0.9}
-        panSpeed={0.6}
-        maxDistance={MAX_DISTANCE}
-      />
+      <OrbitControls makeDefault enableDamping dampingFactor={0.07} rotateSpeed={0.5} zoomSpeed={0.9} panSpeed={0.6} maxDistance={MAX_DISTANCE} />
       <CameraRig />
       <ExitToStars />
     </>

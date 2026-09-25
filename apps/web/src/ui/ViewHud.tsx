@@ -8,6 +8,7 @@ import { formatNumber } from "./format";
 import { Icon } from "./Icon";
 import { useIsMobile, useIsTouch } from "./useMedia";
 import { useSelectionStore } from "../state/selectionStore";
+import { useSkyStore, type SkyLayers } from "../state/skyStore";
 
 function formatDistance(level: "interstellar" | "cosmic", d: number): string {
   if (level === "interstellar") {
@@ -164,7 +165,13 @@ export function ScaleHud() {
             className="scale-slider flex-1"
             aria-label="Position in size line-up"
           />
-          <button type="button" className="btn" onClick={() => useScaleStore.getState().step(1)} disabled={index === SCALE_LINEUP.length - 1} aria-label="Bigger">
+          <button
+            type="button"
+            className="btn"
+            onClick={() => useScaleStore.getState().step(1)}
+            disabled={index === SCALE_LINEUP.length - 1}
+            aria-label="Bigger"
+          >
             <Icon name="next" size={14} />
           </button>
           <button type="button" className="btn" onClick={leaveSpecialView} aria-label="Exit">
@@ -175,6 +182,63 @@ export function ScaleHud() {
         <div className="text-center text-[11px] text-ink-faint">
           {touch ? "Pinch to grow · drag to look around" : "Scroll to grow · drag to look around · ← → to step"}
         </div>
+      </div>
+    </div>
+  );
+}
+
+const SKY_LAYERS: [keyof SkyLayers, string][] = [
+  ["figures", "Lines"],
+  ["names", "Names"],
+  ["starNames", "Stars"],
+  ["borders", "Borders"],
+  ["grid", "Grid"],
+  ["milkyWay", "Milky Way"],
+];
+
+/** Layer toggles and zoom for the night-sky view. */
+export function SkyHud() {
+  const sky = useSkyStore();
+  const mobile = useIsMobile();
+  const touch = useIsTouch();
+  const zoom = sky.zoomBy;
+
+  return (
+    <div className="safe-bottom pointer-events-none fixed inset-x-0 bottom-0 z-20 flex justify-center px-2 pt-2 md:p-4">
+      <div
+        className={`panel animate-fade-in pointer-events-auto flex max-w-full flex-col items-center ${mobile ? "gap-1 px-1.5 py-1.5" : "gap-1.5 px-2 py-2"}`}
+      >
+        <div className="flex max-w-full items-center gap-1">
+          <div className="thin-scroll flex min-w-0 items-center gap-0.5 overflow-x-auto">
+            {SKY_LAYERS.map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                className={`btn shrink-0 ${mobile ? "!h-8 !px-2 !text-[12px]" : ""}`}
+                data-on={sky[key]}
+                aria-pressed={sky[key]}
+                onClick={() => sky.toggle(key)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="mx-0.5 h-5 w-px shrink-0 bg-line" />
+          <button type="button" className={`btn shrink-0 ${mobile ? "!h-8 !min-w-8 !px-1.5" : ""}`} onClick={() => zoom(1 / 1.5)} aria-label="Zoom in">
+            <Icon name="plus" size={14} />
+          </button>
+          <span className="w-10 shrink-0 text-center text-[12px] text-ink-dim tabular-nums" title="Field of view">
+            {Math.round(sky.fov)}°
+          </span>
+          <button type="button" className={`btn shrink-0 ${mobile ? "!h-8 !min-w-8 !px-1.5" : ""}`} onClick={() => zoom(1.5)} aria-label="Zoom out">
+            <Icon name="minus" size={14} />
+          </button>
+        </div>
+        {!mobile && (
+          <div className="text-[11px] text-ink-faint">
+            {touch ? "Drag to look around · pinch to zoom · tap a star or a figure" : "Drag to look around · scroll to zoom · click a star or a figure"}
+          </div>
+        )}
       </div>
     </div>
   );

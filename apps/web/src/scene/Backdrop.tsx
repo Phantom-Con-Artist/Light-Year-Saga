@@ -21,6 +21,7 @@ import {
 import { renderDistance } from "../astronomy/scale";
 import { skyFragment, skyVertex } from "./shaders";
 import { ScreenLabel } from "./ScreenLabel";
+import { graphics } from "../state/graphicsStore";
 
 export const STARMAP_SOURCES = ["/textures/milkyway_4k.jpg", "/textures/milkyway_8k.jpg"];
 export const DIFFUSE_SOURCES = ["/textures/milkyway_diffuse_4k.jpg"];
@@ -29,7 +30,7 @@ function prepare(tex: Texture, maxAnisotropy: number) {
   tex.colorSpace = SRGBColorSpace;
   tex.minFilter = LinearMipmapLinearFilter;
   tex.magFilter = LinearFilter;
-  tex.anisotropy = Math.min(8, maxAnisotropy);
+  tex.anisotropy = Math.min(graphics().anisotropy, maxAnisotropy);
   tex.generateMipmaps = true;
   tex.needsUpdate = true;
 }
@@ -79,7 +80,7 @@ export function SkyDome({ sources = STARMAP_SOURCES, gain = 1, blackLevel = 0, b
     const loader = new TextureLoader();
     const maxAniso = gl.capabilities.getMaxAnisotropy();
     const physicalWidth = window.screen.width * window.devicePixelRatio;
-    const allowUpgrade = physicalWidth >= 2560 && gl.capabilities.maxTextureSize >= 8192;
+    const allowUpgrade = graphics().hiResTextures && physicalWidth >= 2560 && gl.capabilities.maxTextureSize >= 8192;
 
     const apply = (tex: Texture) => {
       if (cancelled) return tex.dispose();

@@ -7,6 +7,9 @@ interface UiState {
   /** Phone layout: the object list, shown as a sheet. */
   browseOpen: boolean;
   setBrowse: (open: boolean) => void;
+  /** Graphics settings panel. */
+  settingsOpen: boolean;
+  setSettings: (open: boolean) => void;
 }
 
 export const useUiStore = create<UiState>()((set) => ({
@@ -15,4 +18,6 @@ export const useUiStore = create<UiState>()((set) => ({
   closeLogbook: () => set({ logbookOpen: false }),
   browseOpen: false,
   setBrowse: (open) => set({ browseOpen: open }),
+  settingsOpen: false,
+  setSettings: (open) => set({ settingsOpen: open }),
 }));

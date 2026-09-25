@@ -4,7 +4,8 @@ import { TopBar } from "./ui/TopBar";
 import { Navigator } from "./ui/Navigator";
 import { Inspector } from "./ui/Inspector";
 import { TimeControls } from "./ui/TimeControls";
-import { DistanceReadout, FocusHud, ScaleHud } from "./ui/ViewHud";
+import { DistanceReadout, FocusHud, ScaleHud, SkyHud } from "./ui/ViewHud";
+import { PerfOverlay, Settings } from "./ui/Settings";
 import { Logbook, Toasts } from "./ui/Logbook";
 import { Cockpit } from "./ui/cockpit/Cockpit";
 import { MissionPicker } from "./ui/cockpit/MissionPicker";
@@ -23,6 +24,7 @@ import { useStarStore, starName } from "./data/stars";
 import { getObject } from "./data/solarSystem";
 import { CATALOG_KIND_LABEL, getCatalogObject, getExoPlanet } from "./data/catalog";
 import { TEXTURE_CREDIT } from "./scene/realTextures";
+import { getConstellation } from "./data/constellations";
 
 function useKeyboardShortcuts() {
   useEffect(() => {
@@ -63,7 +65,8 @@ function useKeyboardShortcuts() {
           if (level === "scale") useScaleStore.getState().step(-1);
           break;
         case "Escape":
-          if (useUiStore.getState().logbookOpen) useUiStore.getState().closeLogbook();
+          if (useUiStore.getState().settingsOpen) useUiStore.getState().setSettings(false);
+          else if (useUiStore.getState().logbookOpen) useUiStore.getState().closeLogbook();
           else if (useMissionStore.getState().pickerOpen) useMissionStore.getState().closePicker();
           else if (useSelectionStore.getState().selectedId) selectObject(null);
           else if (level === "focus" || level === "scale") leaveSpecialView();
@@ -86,10 +89,11 @@ function useDiscoveries() {
         const body = getObject(id);
         const c = getCatalogObject(id);
         const p = getExoPlanet(id);
+        const con = getConstellation(id);
         const catalog = useStarStore.getState().catalog;
         const i = catalog?.indexById.get(id);
-        const title = body?.name ?? c?.name ?? p?.planet.name ?? (catalog && i !== undefined ? starName(catalog, i) : id);
-        const kind = body?.classification ?? (c ? CATALOG_KIND_LABEL[c.kind] : p ? "Exoplanet" : "Catalogue star");
+        const title = body?.name ?? c?.name ?? p?.planet.name ?? con?.name ?? (catalog && i !== undefined ? starName(catalog, i) : id);
+        const kind = body?.classification ?? (c ? CATALOG_KIND_LABEL[c.kind] : p ? "Exoplanet" : con ? "Constellation" : "Catalogue star");
         useDiscoveryStore.getState().pushToast({ tone: "discovery", title, body: kind });
       }),
     [],
@@ -100,7 +104,11 @@ function useDiscoveries() {
 function TransitionOverlay() {
   const fade = useViewStore((s) => s.fade);
   return (
-    <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-[35] bg-black" style={{ opacity: fade, transition: `opacity ${FADE_DURATION_MS}ms ease` }} />
+    <div
+      aria-hidden="true"
+      className="pointer-events-none fixed inset-0 z-[35] bg-black"
+      style={{ opacity: fade, transition: `opacity ${FADE_DURATION_MS}ms ease` }}
+    />
   );
 }
 
@@ -108,6 +116,16 @@ function Credits() {
   const level = useViewStore((s) => s.level);
   return (
     <div className="fixed bottom-4 left-4 z-10 hidden flex-col gap-0.5 text-[11px] text-ink-faint xl:flex">
+      {level === "sky" && (
+        <>
+          <a href="https://github.com/astronexus/HYG-Database" target="_blank" rel="noreferrer" className="hover:text-ink-dim">
+            Stars: HYG Database v4.1 (CC BY-SA 4.0)
+          </a>
+          <a href="https://github.com/ofrohn/d3-celestial" target="_blank" rel="noreferrer" className="hover:text-ink-dim">
+            Constellations: d3-celestial (BSD-3), IAU boundaries
+          </a>
+        </>
+      )}
       {level !== "cosmic" && (
         <a href="https://svs.gsfc.nasa.gov/4851" target="_blank" rel="noreferrer" className="hover:text-ink-dim">
           Sky: NASA/GSFC SVS Deep Star Maps 2020
@@ -162,11 +180,14 @@ export default function App() {
           <DistanceReadout />
           {level === "focus" && <FocusHud />}
           {level === "scale" && <ScaleHud />}
+          {level === "sky" && <SkyHud />}
           <Credits />
         </>
       )}
       <MissionPicker />
       <Logbook />
+      <Settings />
+      <PerfOverlay />
       <Toasts />
       <TransitionOverlay />
     </>

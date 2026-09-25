@@ -81,8 +81,7 @@ function SearchBox({ mobile = false, onClose }: { mobile?: boolean; onClose?: ()
             else if (e.key === "Escape") {
               input.current?.blur();
               onClose?.();
-            }
-            else return;
+            } else return;
             e.preventDefault();
             e.stopPropagation();
           }}
@@ -100,7 +99,10 @@ function SearchBox({ mobile = false, onClose }: { mobile?: boolean; onClose?: ()
       </div>
 
       {open && results.length > 0 && (
-        <ul className={`panel thin-scroll animate-panel-in absolute inset-x-0 top-11 overflow-y-auto p-1 ${mobile ? "max-h-[60dvh]" : "max-h-96"}`} role="listbox">
+        <ul
+          className={`panel thin-scroll animate-panel-in absolute inset-x-0 top-11 overflow-y-auto p-1 ${mobile ? "max-h-[60dvh]" : "max-h-96"}`}
+          role="listbox"
+        >
           {results.map((o, i) => (
             <li key={o.id} role="option" aria-selected={i === cursor}>
               <button
@@ -123,6 +125,7 @@ function SearchBox({ mobile = false, onClose }: { mobile?: boolean; onClose?: ()
 }
 
 const LEVELS: { level: ViewLevel; label: string; short: string; tiny: string }[] = [
+  { level: "sky", label: "Night Sky", short: "Sky", tiny: "Sky" },
   { level: "system", label: "Solar System", short: "Solar", tiny: "Solar" },
   { level: "interstellar", label: "Stars & Galaxy", short: "Stars", tiny: "Stars" },
   { level: "cosmic", label: "Universe", short: "Universe", tiny: "Cosmos" },
@@ -156,20 +159,22 @@ function LevelSwitch({ compact = false }: { compact?: boolean }) {
           )}
         </button>
       ))}
-      <button
-        type="button"
-        role="tab"
-        aria-selected={level === "scale"}
-        className={tab}
-        data-on={level === "scale"}
-        title="Size comparison: from a neutron star to TON 618"
-        onClick={() => {
-          selectObject(null);
-          useViewStore.getState().goTo("scale");
-        }}
-      >
-        Size
-      </button>
+      {!compact && (
+        <button
+          type="button"
+          role="tab"
+          aria-selected={level === "scale"}
+          className={tab}
+          data-on={level === "scale"}
+          title="Size comparison: from a neutron star to TON 618"
+          onClick={() => {
+            selectObject(null);
+            useViewStore.getState().goTo("scale");
+          }}
+        >
+          Size
+        </button>
+      )}
     </div>
   );
 }
@@ -196,6 +201,22 @@ function LogbookButton() {
         {count}
         <span className="text-ink-faint">/{TOTAL_DISCOVERABLE}</span>
       </span>
+    </button>
+  );
+}
+
+function SettingsButton() {
+  const open = useUiStore((s) => s.settingsOpen);
+  return (
+    <button
+      type="button"
+      className="panel btn !h-9 !px-2.5"
+      data-on={open}
+      onClick={() => useUiStore.getState().setSettings(!open)}
+      title="Graphics settings"
+      aria-label="Graphics settings"
+    >
+      <Icon name="settings" size={15} />
     </button>
   );
 }
@@ -243,7 +264,12 @@ function MobileTopBar() {
         <SearchBox mobile onClose={() => setSearching(false)} />
       ) : (
         <div className="flex items-center justify-between gap-1.5">
-          <button type="button" className="voyage-button pointer-events-auto !h-9 !px-2.5" onClick={() => useMissionStore.getState().openPicker()} aria-label="Voyages">
+          <button
+            type="button"
+            className="voyage-button pointer-events-auto !h-9 !px-2.5"
+            onClick={() => useMissionStore.getState().openPicker()}
+            aria-label="Voyages"
+          >
             <Icon name="rocket" size={16} />
           </button>
           <div className="pointer-events-auto">
@@ -287,8 +313,21 @@ function MobileTopBar() {
                       {count}/{TOTAL_DISCOVERABLE}
                     </span>
                   </button>
+                  <button
+                    type="button"
+                    className={item}
+                    onClick={run(() => {
+                      selectObject(null);
+                      useViewStore.getState().goTo("scale");
+                    })}
+                  >
+                    <Icon name="ruler" size={16} /> Size comparison
+                  </button>
                   <button type="button" className={item} onClick={() => useAudioStore.getState().toggleMute()}>
                     <Icon name={muted ? "soundOff" : "sound"} size={16} /> {muted ? "Music off" : "Music on"}
+                  </button>
+                  <button type="button" className={item} onClick={run(() => useUiStore.getState().setSettings(true))}>
+                    <Icon name="settings" size={16} /> Graphics settings
                   </button>
                 </div>
               )}
@@ -336,6 +375,7 @@ function DesktopTopBar() {
         )}
         <LogbookButton />
         <SoundButton />
+        <SettingsButton />
         {(level === "system" || level === "focus") && <ClockBadge />}
       </div>
     </header>

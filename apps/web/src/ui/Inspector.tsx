@@ -2,17 +2,18 @@ import { useRef, useState, type ReactNode } from "react";
 import { useIsMobile } from "./useMedia";
 import type { DataFreshness, ExternalSource, SpaceObject } from "../domain/types";
 import { getCatalogObject, getExoPlanet, physicsForStar, type CatalogObject, type PlanetRef } from "../data/catalog";
-import {
-  LY_PER_PC,
-  STAR_SOURCE,
-  apparentMagnitude,
-  isStarId,
-  luminositySolar,
-  starDistanceLy,
-  starName,
-  useStarStore,
-} from "../data/stars";
+import { LY_PER_PC, STAR_SOURCE, apparentMagnitude, isStarId, luminositySolar, starDistanceLy, starName, useStarStore } from "../data/stars";
 import { getObject } from "../data/solarSystem";
+import {
+  CONSTELLATION_SOURCE,
+  bestMonth,
+  figureStars,
+  getConstellation,
+  hemisphereOf,
+  useConstellationStore,
+  visibleFrom,
+  type Constellation,
+} from "../data/constellations";
 import { AU_KM } from "../astronomy/ephemeris";
 import { selectObject, useSelectionStore } from "../state/selectionStore";
 import { canVisitUpClose, focusObject, visitUpClose } from "../state/navigation";
@@ -87,7 +88,12 @@ function Sources({ sources, footnote }: { sources: ExternalSource[]; footnote?: 
 
 function Shell({ id, title, subtitle, children, action }: { id: string; title: string; subtitle: ReactNode; children: ReactNode; action?: ReactNode }) {
   const mobile = useIsMobile();
-  if (mobile) return <Sheet key={id} title={title} subtitle={subtitle} action={action}>{children}</Sheet>;
+  if (mobile)
+    return (
+      <Sheet key={id} title={title} subtitle={subtitle} action={action}>
+        {children}
+      </Sheet>
+    );
   return (
     <aside
       key={id}
@@ -221,9 +227,7 @@ function Telemetry({ obj }: { obj: SpaceObject }) {
           <Stat label="From Earth" value={formatNumber(t.earthDistanceAu, 3)} unit="AU" />
         ))}
       {t.lightTimeFromEarthS !== undefined && <Stat label="Light time from Earth" value={formatLightTime(t.lightTimeFromEarthS)} />}
-      {t.orbitalSpeedKmS !== undefined && (
-        <Stat label={moon ? "Speed around Earth" : "Orbital speed"} value={formatNumber(t.orbitalSpeedKmS, 2)} unit="km/s" />
-      )}
+      {t.orbitalSpeedKmS !== undefined && <Stat label={moon ? "Speed around Earth" : "Orbital speed"} value={formatNumber(t.orbitalSpeedKmS, 2)} unit="km/s" />}
     </Grid>
   );
 }
@@ -303,7 +307,12 @@ function CatalogInspector({ obj }: { obj: CatalogObject }) {
             <Stat key={label} label={label} value={value} />
           ))}
           {obj.star && <Stat label="Size" value={sizeLine(obj.star.radiusSolar)} />}
-          {bh && <Stat label="Event horizon radius" value={rsKm < 1e6 ? `${formatNumber(rsKm, 0)} km` : `${formatNumber(rsKm / AU_KM, rsKm / AU_KM < 10 ? 2 : 0)} AU`} />}
+          {bh && (
+            <Stat
+              label="Event horizon radius"
+              value={rsKm < 1e6 ? `${formatNumber(rsKm, 0)} km` : `${formatNumber(rsKm / AU_KM, rsKm / AU_KM < 10 ? 2 : 0)} AU`}
+            />
+          )}
         </Grid>
         {obj.star?.radiusNote && <p className="mt-2.5 text-[12px] text-ink-faint">{obj.star.radiusNote}</p>}
       </Section>
@@ -312,9 +321,15 @@ function CatalogInspector({ obj }: { obj: CatalogObject }) {
           <ul className="space-y-1">
             {obj.system.planets.map((p) => (
               <li key={p.id}>
-                <button type="button" className="flex w-full items-baseline justify-between gap-2 rounded-md px-1.5 py-1 text-left hover:bg-white/[0.06]" onClick={() => focusObject(p.id)}>
+                <button
+                  type="button"
+                  className="flex w-full items-baseline justify-between gap-2 rounded-md px-1.5 py-1 text-left hover:bg-white/[0.06]"
+                  onClick={() => focusObject(p.id)}
+                >
                   <span className="text-[14px] text-ink">{p.name}</span>
-                  <span className="text-[12px] text-ink-faint tabular-nums">{formatNumber(p.radiusEarth, 2)} R⊕ · {formatNumber(p.periodDays, p.periodDays < 10 ? 2 : 0)} d</span>
+                  <span className="text-[12px] text-ink-faint tabular-nums">
+                    {formatNumber(p.radiusEarth, 2)} R⊕ · {formatNumber(p.periodDays, p.periodDays < 10 ? 2 : 0)} d
+                  </span>
                 </button>
               </li>
             ))}
@@ -438,6 +453,79 @@ function StarInspector({ id }: { id: string }) {
   );
 }
 
+/* ------------------------------------------------------ constellations */
+
+function ConstellationInspector({ c }: { c: Constellation }) {
+  const catalog = useStarStore((s) => s.catalog);
+  const geometry = useConstellationStore((s) => s.geometry);
+  const stars = catalog && geometry ? figureStars(geometry, catalog, c.id).slice(0, 8) : [];
+  const level = useViewStore((s) => s.level);
+  const raH = Math.floor(c.ra / 15);
+  const raM = Math.round((c.ra / 15 - raH) * 60);
+
+  return (
+    <Shell
+      id={c.key}
+      title={c.name}
+      subtitle={`${c.zodiac ? "Zodiac constellation" : "Constellation"} · ${c.meaning}`}
+      action={
+        level !== "sky" ? (
+          <button type="button" className="visit-button" onClick={() => useViewStore.getState().goTo("sky", { then: () => selectObject(c.key) })}>
+            <Icon name="constellation" size={15} /> See it in the night sky
+          </button>
+        ) : undefined
+      }
+    >
+      <Section title="In the sky">
+        <Grid>
+          <Stat label="Highest at midnight" value={bestMonth(c.ra)} />
+          <Stat label="Hemisphere" value={hemisphereOf(c.dec)} />
+          <Stat label="Visible from" value={visibleFrom(c.dec)} />
+          <Stat label="Position" value={`${raH}h ${String(raM).padStart(2, "0")}m, ${c.dec > 0 ? "+" : ""}${Math.round(c.dec)}°`} />
+          <Stat label="Abbreviation" value={c.id} />
+          <Stat label="Star names use" value={c.genitive} />
+        </Grid>
+      </Section>
+      {stars.length > 0 && catalog && (
+        <Section title="Stars of the figure" note="brightest first">
+          <ul className="space-y-0.5">
+            {stars.map((i) => {
+              const d = starDistanceLy(catalog, i);
+              return (
+                <li key={i}>
+                  <button
+                    type="button"
+                    className="flex w-full items-baseline justify-between gap-2 rounded-md px-1.5 py-1 text-left hover:bg-white/[0.06]"
+                    onClick={() => focusObject(`hyg-${catalog.meta.hyg[i]}`)}
+                  >
+                    <span className="truncate text-[14px] text-ink">{starName(catalog, i)}</span>
+                    <span className="shrink-0 text-[12px] text-ink-faint tabular-nums">
+                      mag {formatNumber(apparentMagnitude(catalog.absMag[i], d), 1)} · {formatNumber(d, d < 100 ? 1 : 0)} ly
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          <p className="mt-2.5 text-[12px] leading-relaxed text-ink-faint">
+            The pattern is only a line of sight: its stars sit at very different distances and would not look like this from anywhere else.
+          </p>
+        </Section>
+      )}
+      <Section title="About">
+        {c.story && <p className="text-[14px] leading-relaxed text-ink-dim">{c.story}</p>}
+        <p className={`${c.story ? "mt-2.5 text-[12px] text-ink-faint" : "text-[14px] text-ink-dim"} leading-relaxed`}>{c.origin}</p>
+      </Section>
+      <Sources
+        sources={[
+          { ...CONSTELLATION_SOURCE, freshness: "STATIC" },
+          { ...STAR_SOURCE, freshness: "STATIC" },
+        ]}
+      />
+    </Shell>
+  );
+}
+
 export function Inspector() {
   const selectedId = useSelectionStore((s) => s.selectedId);
   if (!selectedId) return null;
@@ -448,6 +536,7 @@ export function Inspector() {
   const planet = getExoPlanet(selectedId);
   if (planet) return <PlanetInspector key={selectedId} refr={planet} />;
   if (isStarId(selectedId)) return <StarInspector key={selectedId} id={selectedId} />;
+  const con = getConstellation(selectedId);
+  if (con) return <ConstellationInspector key={con.key} c={con} />;
   return null;
 }
-

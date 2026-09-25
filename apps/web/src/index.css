@@ -440,6 +440,88 @@
   }
 }
 
+@layer components {
+  /* Night-sky view. */
+  .constellation-label {
+    translate: -50% -50%;
+    white-space: nowrap;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgb(150 180 235 / 0.62);
+    text-shadow: 0 1px 3px rgb(0 0 0 / 0.9);
+    user-select: none;
+    transition: color 0.2s;
+  }
+  .constellation-label:hover,
+  .constellation-label[data-active="true"] {
+    color: #ffd08a;
+  }
+  .sky-star-label {
+    font-size: 11.5px;
+    color: rgb(255 255 255 / 0.55);
+  }
+
+  /* Settings controls. */
+  .toggle {
+    position: relative;
+    width: 38px;
+    height: 22px;
+    border-radius: 999px;
+    background: rgb(255 255 255 / 0.12);
+    transition: background 0.15s;
+  }
+  .toggle::after {
+    content: "";
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 16px;
+    height: 16px;
+    border-radius: 999px;
+    background: var(--color-ink-dim);
+    transition:
+      transform 0.15s,
+      background 0.15s;
+  }
+  .toggle[data-on="true"] {
+    background: color-mix(in srgb, var(--color-accent) 55%, transparent);
+  }
+  .toggle[data-on="true"]::after {
+    transform: translateX(16px);
+    background: #fff;
+  }
+  .segmented {
+    display: flex;
+    gap: 2px;
+    padding: 2px;
+    border-radius: 9px;
+    background: rgb(255 255 255 / 0.05);
+  }
+  .segmented button {
+    flex: 1 1 0;
+    min-width: 0;
+    height: 30px;
+    padding: 0 6px;
+    border-radius: 7px;
+    font-size: 12.5px;
+    font-weight: 500;
+    white-space: nowrap;
+    color: var(--color-ink-dim);
+    transition:
+      background 0.15s,
+      color 0.15s;
+  }
+  .segmented button:hover {
+    color: var(--color-ink);
+  }
+  .segmented button[data-on="true"] {
+    background: rgb(255 255 255 / 0.14);
+    color: var(--color-ink);
+  }
+}
+
 /* Phone notches and home indicators. */
 @layer utilities {
   .safe-top {

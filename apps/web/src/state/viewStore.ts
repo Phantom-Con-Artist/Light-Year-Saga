@@ -8,9 +8,10 @@ import { Vector3 } from "three";
  *   cosmic       — millions of light-years: galaxies, 2MRS survey, voids, quasars
  *   focus        — true-scale close-up of one star / black hole / planetary system (solar radii)
  *   scale        — size line-up from a neutron star to TON 618
+ *   sky          — the night sky from Earth: real stars and the 88 constellations
  * The first three share ecliptic J2000 axes, so view direction carries over.
  */
-export type ViewLevel = "system" | "interstellar" | "cosmic" | "focus" | "scale";
+export type ViewLevel = "system" | "interstellar" | "cosmic" | "focus" | "scale" | "sky";
 
 const FADE_MS = 280;
 

@@ -2,6 +2,7 @@ import { SOLAR_SYSTEM } from "../data/solarSystem";
 import { ALL_EXOPLANETS, CATALOG, CATALOG_KIND_LABEL } from "../data/catalog";
 import { starDistanceLy, starId, starName, type StarCatalog } from "../data/stars";
 import { formatNumber } from "./format";
+import { CONSTELLATIONS, CONSTELLATION_ACCENT } from "../data/constellations";
 
 export interface SearchEntry {
   id: string;
@@ -29,6 +30,13 @@ export function buildSearchIndex(catalog: StarCatalog | null): SearchEntry[] {
       detail: CATALOG_KIND_LABEL[o.kind],
       accent: o.accent,
       keywords: `${o.id} ${o.kind} ${o.classification} ${o.keywords ?? ""}`.toLowerCase(),
+    })),
+    ...CONSTELLATIONS.map((c) => ({
+      id: c.key,
+      name: c.name,
+      detail: `Constellation · ${c.meaning.replace(/^The /, "")}`,
+      accent: CONSTELLATION_ACCENT,
+      keywords: `${c.id} ${c.genitive} ${c.meaning} constellation${c.zodiac ? " zodiac" : ""}`.toLowerCase(),
     })),
     ...ALL_EXOPLANETS.map(({ planet, system }) => ({
       id: planet.id,
@@ -60,7 +68,7 @@ export function search(entries: SearchEntry[], catalog: StarCatalog | null, quer
   const q = query.trim().toLowerCase();
   if (!q) {
     // A taste of everything when the box is empty.
-    const picks = ["earth", "saturn", "betelgeuse", "orion-nebula", "pillars-of-creation", "trappist-1", "andromeda", "ton-618", "bootes-void"];
+    const picks = ["earth", "saturn", "con-Ori", "betelgeuse", "orion-nebula", "pillars-of-creation", "trappist-1", "andromeda", "ton-618", "bootes-void"];
     return picks.map((id) => entries.find((e) => e.id === id || e.name.toLowerCase() === id)).filter((e): e is SearchEntry => !!e);
   }
 

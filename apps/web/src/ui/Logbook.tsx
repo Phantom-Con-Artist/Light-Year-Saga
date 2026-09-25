@@ -1,5 +1,6 @@
 import { SOLAR_SYSTEM } from "../data/solarSystem";
 import { getCatalogObject, getExoPlanet } from "../data/catalog";
+import { getConstellation } from "../data/constellations";
 import { MISSIONS } from "../data/missions";
 import { CATEGORIES, RANKS, TOTAL_DISCOVERABLE, rankFor, useDiscoveryStore } from "../state/discoveryStore";
 import { useUiStore } from "../state/uiStore";
@@ -8,7 +9,7 @@ import { focusObject } from "../state/navigation";
 import { Icon } from "./Icon";
 
 function nameOf(id: string): string {
-  return SOLAR_SYSTEM.find((o) => o.id === id)?.name ?? getCatalogObject(id)?.name ?? getExoPlanet(id)?.planet.name ?? id;
+  return SOLAR_SYSTEM.find((o) => o.id === id)?.name ?? getCatalogObject(id)?.name ?? getExoPlanet(id)?.planet.name ?? getConstellation(id)?.name ?? id;
 }
 
 /** Personal exploration log: discoveries by category, rank, mission badges. */
@@ -103,7 +104,11 @@ export function Logbook() {
                       {nameOf(id)}
                     </button>
                   ) : (
-                    <span key={id} className="rounded-full border border-dashed border-line px-2.5 py-1 text-[12px] text-ink-faint" title="Undiscovered — go exploring">
+                    <span
+                      key={id}
+                      className="rounded-full border border-dashed border-line px-2.5 py-1 text-[12px] text-ink-faint"
+                      title="Undiscovered — go exploring"
+                    >
                       ???
                     </span>
                   ),
@@ -132,10 +137,15 @@ export function Logbook() {
 export function Toasts() {
   const toasts = useDiscoveryStore((s) => s.toasts);
   return (
-    <div className="pointer-events-none fixed inset-x-0 top-14 z-50 mx-auto flex w-[min(280px,calc(100vw-1rem))] flex-col gap-2 md:inset-x-auto md:top-20 md:right-[356px] md:mx-0" aria-live="polite">
+    <div
+      className="pointer-events-none fixed inset-x-0 top-14 z-50 mx-auto flex w-[min(280px,calc(100vw-1rem))] flex-col gap-2 md:inset-x-auto md:top-20 md:right-[356px] md:mx-0"
+      aria-live="polite"
+    >
       {toasts.map((t) => (
         <div key={t.key} className={`toast toast--${t.tone} animate-panel-in`}>
-          <div className="text-[11px] font-medium tracking-wide uppercase opacity-80">{t.tone === "discovery" ? "New discovery" : t.tone === "rank" ? "Rank up" : "Voyage"}</div>
+          <div className="text-[11px] font-medium tracking-wide uppercase opacity-80">
+            {t.tone === "discovery" ? "New discovery" : t.tone === "rank" ? "Rank up" : "Voyage"}
+          </div>
           <div className="text-[14px] font-semibold">{t.title}</div>
           <div className="text-[12px] opacity-80">{t.body}</div>
         </div>

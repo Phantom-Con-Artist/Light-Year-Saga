@@ -14,6 +14,7 @@ import { useViewStore } from "../state/viewStore";
 import { useScaleStore } from "../state/scaleStore";
 import { useDiscoveryStore } from "../state/discoveryStore";
 import { formatNumber } from "./format";
+import { CONSTELLATIONS, CONSTELLATION_ACCENT, hemisphereOf, type Constellation } from "../data/constellations";
 
 interface RowItem {
   id: string;
@@ -48,7 +49,11 @@ function Group({ title, children, defaultOpen = true }: { title: string; childre
   const [open, setOpen] = useState(defaultOpen);
   return (
     <div>
-      <button type="button" className="label-caps flex w-full items-center justify-between px-2.5 pt-2.5 pb-1 hover:text-ink-dim" onClick={() => setOpen(!open)}>
+      <button
+        type="button"
+        className="label-caps flex w-full items-center justify-between px-2.5 pt-2.5 pb-1 hover:text-ink-dim"
+        onClick={() => setOpen(!open)}
+      >
         {title}
         <span className="text-[10px]">{open ? "−" : "+"}</span>
       </button>
@@ -57,7 +62,12 @@ function Group({ title, children, defaultOpen = true }: { title: string; childre
   );
 }
 
-const catalogItem = (o: CatalogObject): RowItem => ({ id: o.id, name: o.name, accent: o.accent, detail: o.distanceLabel.replace(" million ly", " Mly").replace(" billion ly", " Gly") });
+const catalogItem = (o: CatalogObject): RowItem => ({
+  id: o.id,
+  name: o.name,
+  accent: o.accent,
+  detail: o.distanceLabel.replace(" million ly", " Mly").replace(" billion ly", " Gly"),
+});
 const items = (pred: (o: CatalogObject) => boolean) => CATALOG.filter(pred).map(catalogItem);
 
 function SolarSystemList() {
@@ -161,6 +171,30 @@ function CosmicList() {
   );
 }
 
+function SkyList() {
+  const byName = [...CONSTELLATIONS].sort((a, b) => a.name.localeCompare(b.name));
+  const row = (c: Constellation) => (
+    <li key={c.key}>
+      <Row item={{ id: c.key, name: c.name, accent: CONSTELLATION_ACCENT, detail: c.id }} />
+    </li>
+  );
+  const zodiac = CONSTELLATIONS.filter((c) => c.zodiac).sort((a, b) => a.ra - b.ra);
+  return (
+    <>
+      <Group title="Zodiac">{zodiac.map(row)}</Group>
+      <Group title="Northern sky" defaultOpen={false}>
+        {byName.filter((c) => !c.zodiac && hemisphereOf(c.dec) === "Northern").map(row)}
+      </Group>
+      <Group title="Along the equator" defaultOpen={false}>
+        {byName.filter((c) => !c.zodiac && hemisphereOf(c.dec) === "Equatorial").map(row)}
+      </Group>
+      <Group title="Southern sky" defaultOpen={false}>
+        {byName.filter((c) => !c.zodiac && hemisphereOf(c.dec) === "Southern").map(row)}
+      </Group>
+    </>
+  );
+}
+
 function FocusList() {
   const focusId = useViewStore((s) => s.focusId);
   const subject = resolveCloseUp(focusId);
@@ -211,6 +245,7 @@ function Lists() {
       {level === "cosmic" && <CosmicList />}
       {level === "focus" && <FocusList />}
       {level === "scale" && <ScaleList />}
+      {level === "sky" && <SkyList />}
     </>
   );
 }
@@ -253,7 +288,10 @@ export function Navigator() {
     );
   }
   return (
-    <nav aria-label="Objects" className="panel thin-scroll animate-fade-in pointer-events-auto fixed top-20 left-4 z-10 hidden max-h-[calc(100vh-10rem)] w-56 overflow-y-auto p-1.5 lg:block">
+    <nav
+      aria-label="Objects"
+      className="panel thin-scroll animate-fade-in pointer-events-auto fixed top-20 left-4 z-10 hidden max-h-[calc(100vh-10rem)] w-56 overflow-y-auto p-1.5 lg:block"
+    >
       <Lists />
     </nav>
   );
