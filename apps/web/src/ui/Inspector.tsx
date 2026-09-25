@@ -27,6 +27,9 @@ import { SATELLITE_GROUPS, SMALL_BODY_CLASSES } from "../data/solar/regions";
 import { SATELLITES, SMALL_BODY_COUNTS } from "../data/solar/elements.gen";
 import { formatDays, formatDuration, formatLightTime, formatNumber, formatScientific } from "./format";
 import { Icon } from "./Icon";
+import { isPointGalaxyId, pointGalaxyInfo, useCosmicPoints } from "../data/cosmic/cosmicPoints";
+import { lookbackTimeGyr, redshiftFromComovingMly } from "../astronomy/cosmology";
+import { TWO_MRS, doi } from "../data/catalog/sources";
 
 const FRESHNESS_LABEL: Record<DataFreshness, string> = {
   LIVE: "Live",
@@ -609,6 +612,14 @@ function CatalogInspector({ obj }: { obj: CatalogObject }) {
       <Section title="About">
         <p className="text-[14px] leading-relaxed text-ink-dim">{obj.description}</p>
         {obj.visualNote && <p className="mt-2.5 text-[12px] leading-relaxed text-ink-faint">{obj.visualNote}</p>}
+        {bh && (
+          <p className="mt-2.5 text-[12px] leading-relaxed text-ink-faint">
+            Up close, every pixel's light is traced through the curved spacetime of a non-spinning black hole: the shadow, the thin photon ring
+            and the far side of the disk lifted over the top all come out of the calculation. The disk's approaching side is brighter and bluer
+            (Doppler beaming) and all of it is reddened by gravity. Its colours are its temperature profile scaled into visible light: real disks
+            shine mostly in {bh.massSolar > 1000 ? "ultraviolet" : "X-rays"}.
+          </p>
+        )}
         {obj.photo && (
           <p className="mt-2.5 text-[12px] leading-relaxed text-ink-faint">
             {obj.kind === "nebula"
@@ -723,6 +734,90 @@ function StarInspector({ id }: { id: string }) {
   );
 }
 
+/* ------------------------------------------------------ point galaxies */
+
+const TULLY_2015 = doi("Tully 2015", "Galaxy groups: a 2MASS catalog, AJ 149, 171", "10.1088/0004-6256/149/5/171");
+const UNGC = doi("Karachentsev et al. 2013", "Updated Nearby Galaxy Catalog, AJ 145, 101", "10.1088/0004-6256/145/4/101");
+const VORONOI: ExternalSource = {
+  provider: "Icke & van de Weygaert 1987",
+  name: "Fragmenting the universe (Voronoi foam model), A&A 184, 16",
+  url: "https://ui.adsabs.harvard.edu/abs/1987A%26A...184...16I",
+  freshness: "STATIC",
+};
+
+function formatMly(d: number): string {
+  if (d < 1) return `${formatNumber(d * 1e6, 0)} ly`;
+  if (d < 1000) return `${formatNumber(d, d < 10 ? 2 : 0)} million ly`;
+  return `${formatNumber(d / 1000, 2)} billion ly`;
+}
+
+/** A galaxy picked from the Universe point clouds: real (catalogued) or modelled. */
+function PointGalaxyInspector({ id }: { id: string }) {
+  const meta = useCosmicPoints((s) => s.meta);
+  useCosmicPoints((s) => s.real);
+  useCosmicPoints((s) => s.modelled);
+  const info = pointGalaxyInfo(id);
+  if (!info) return null;
+  const z = redshiftFromComovingMly(info.distanceMly);
+  const lookback = lookbackTimeGyr(z);
+  const real = info.kind === "real";
+  const raH = info.raDeg / 15;
+  const ra = `${Math.floor(raH)}h ${formatNumber((raH % 1) * 60, 1)}m`;
+  const dec = `${info.decDeg >= 0 ? "+" : "−"}${formatNumber(Math.abs(info.decDeg), 2)}°`;
+  return (
+    <Shell id={id} title={real ? info.name : "Modelled galaxy"} subtitle={`${info.typeLabel} · ${formatMly(info.distanceMly)}`}>
+      <Section title={real ? "Catalogued galaxy" : "Not a real galaxy"}>
+        <p className="text-[13px] leading-relaxed text-ink-dim">
+          {real
+            ? `A real galaxy at its measured position${meta ? "" : " (loading its catalogue name…)"}. Its close-up look is an illustration based on its morphological type.`
+            : "One of the modelled galaxies that fill the universe beyond the surveys. Its position, type and brightness come from a statistical model of the cosmic web, not from a telescope. Use it to get a feel for what is out there."}
+        </p>
+      </Section>
+      <Section title="Position">
+        <Grid>
+          <Stat label="Distance (comoving)" value={formatMly(info.distanceMly)} />
+          <Stat label="Redshift" value={`z ≈ ${formatNumber(z, z < 0.1 ? 4 : 2)}`} />
+          <Stat label="Light left it" value={`${formatNumber(lookback, lookback < 1 ? 3 : 2)} billion years ago`} />
+          <Stat label="Sky position" value={`${ra} ${dec}`} />
+        </Grid>
+      </Section>
+      {real ? (
+        <Section title="Membership">
+          <Grid>
+            <Stat label="Group / cluster" value={info.structure?.name ?? "Field (no named group)"} />
+            <Stat label="Supercluster" value={info.supercluster?.name ?? "—"} />
+          </Grid>
+          <div className="mt-2.5 flex flex-wrap gap-1">
+            {info.structure && (
+              <button type="button" className="btn border border-line !h-8 !text-[12.5px]" onClick={() => focusObject(info.structure!.id)}>
+                Show {info.structure.name}
+              </button>
+            )}
+            {info.supercluster && (
+              <button type="button" className="btn border border-line !h-8 !text-[12.5px]" onClick={() => focusObject(info.supercluster!.id)}>
+                Show {info.supercluster.name}
+              </button>
+            )}
+          </div>
+          {info.catalogue && <p className="mt-2.5 text-[12px] text-ink-faint">Catalogue: {info.catalogue}</p>}
+        </Section>
+      ) : (
+        <Section title="Model values" note="Illustrative">
+          <Grid>
+            <Stat label="Environment" value={info.environment ?? "—"} />
+            <Stat label="Luminosity" value={`${formatNumber(info.luminosityLstar ?? 0, 2)} L*`} />
+            <Stat label="Diameter" value={`~${formatNumber(Math.round((info.diameterLy ?? 0) / 1000) * 1000, 0)} ly`} />
+          </Grid>
+          <p className="mt-2.5 text-[12px] leading-relaxed text-ink-faint">
+            L* is the luminosity where galaxy counts turn over, about the Milky Way's. Clusters in the model are rich in ellipticals and voids in small blue galaxies, as observed.
+          </p>
+        </Section>
+      )}
+      <Sources sources={real ? [TULLY_2015, UNGC, TWO_MRS] : [VORONOI]} footnote={real ? undefined : "Cosmology: Planck 2018 (H₀ = 67.4)."} />
+    </Shell>
+  );
+}
+
 /* ------------------------------------------------------ constellations */
 
 function ConstellationInspector({ c }: { c: Constellation }) {
@@ -808,6 +903,7 @@ export function Inspector() {
   const planet = getExoPlanet(selectedId);
   if (planet) return <PlanetInspector key={selectedId} refr={planet} />;
   if (isStarId(selectedId)) return <StarInspector key={selectedId} id={selectedId} />;
+  if (isPointGalaxyId(selectedId)) return <PointGalaxyInspector key={selectedId} id={selectedId} />;
   const con = getConstellation(selectedId);
   if (con) return <ConstellationInspector key={con.key} c={con} />;
   return null;

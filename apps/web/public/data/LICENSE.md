@@ -35,3 +35,13 @@ Built by `scripts/build-solar-system.mjs`.
 - Asteroid, comet and trans-Neptunian orbits, sizes and discovery details: NASA/JPL Small-Body Database (https://ssd.jpl.nasa.gov/tools/sbdb_query.html). US Government work, public domain.
 - Moon orbits and spacecraft trajectories: NASA/JPL Horizons (https://ssd.jpl.nasa.gov/horizons/). Public domain.
 - Earth satellite orbital elements: CelesTrak (https://celestrak.org), from US Space Force data. Refreshed live in the browser when online.
+
+## Universe (`cosmic-web.bin`, `cosmic-web-meta.json`)
+
+Built by `scripts/build-cosmic-web.mjs` from VizieR:
+
+- Tully 2015, "Galaxy groups: a 2MASS catalog", AJ 149, 171 (2MASS Redshift Survey galaxies, groups and PGC numbers)
+- Karachentsev, Makarov & Kaisina 2013, "Updated Nearby Galaxy Catalog", AJ 145, 101 (galaxy names and measured distances)
+
+The modelled galaxies drawn beyond these surveys are not data: they are generated
+in the browser from a Voronoi model of the cosmic web (`src/data/cosmic/modelledUniverse.ts`).

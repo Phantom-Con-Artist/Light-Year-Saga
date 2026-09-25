@@ -64,7 +64,8 @@ export interface PhysicalProperties {
 
 export type SpacecraftModel = "iss" | "tiangong" | "hubble" | "jwst" | "voyager" | "pioneer" | "new-horizons" | "cassini" | "juno" | "clipper" | "parker";
 
-export type SurfaceStyle = "star" | "rocky" | "cloudy" | "terran" | "banded" | "ice";
+/** "clouds": a cloud-cover layer; "terran-clear": land and sea without painted clouds (for worlds with a cloud layer). */
+export type SurfaceStyle = "star" | "rocky" | "cloudy" | "terran" | "banded" | "ice" | "clouds" | "terran-clear";
 
 export interface VisualDefinition {
   style: SurfaceStyle;

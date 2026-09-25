@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
-import { Matrix4, Vector4 } from "three";
+import { Matrix4, Raycaster, Vector4 } from "three";
+import { rayFromScreen, type AngularHit } from "../common/pointRaycast";
+import { starPoints } from "./StarField";
 import { starId, starName, type StarCatalog } from "../../data/stars";
 import { selectObject, useSelectionStore } from "../../state/selectionStore";
 import { apparentMagFromCamera, starVisibility } from "./visibility";
@@ -9,7 +11,6 @@ import { usePickProvider } from "../common/picking";
 const MAX_LABELS = 22;
 const LABEL_W = 110;
 const LABEL_H = 18;
-const PICK_RADIUS_PX = 12;
 
 interface Projected {
   index: number;
@@ -84,26 +85,24 @@ export function StarOverlay({ catalog }: { catalog: StarCatalog }) {
     return Math.hypot(p[i * 3] - camera.position.x, p[i * 3 + 1] - camera.position.y, p[i * 3 + 2] - camera.position.z);
   };
 
-  /** Brightest visible star under the cursor. */
+  /**
+   * Star under the cursor: a Raycaster against the rendered star cloud; each
+   * hit's index is the star's row in the catalogue. Nearest to the cursor
+   * wins, with a bonus for brighter stars.
+   */
+  const raycaster = useRef(new Raycaster());
   const pick = (sx: number, sy: number): number | null => {
-    const { limitMag } = starVisibility(camera.position.length());
-    const v = new Vector4();
+    const points = starPoints.current;
+    if (!points || !points.visible) return null;
+    rayFromScreen(raycaster.current, camera, sx, sy, size.width, size.height);
+    const hits = raycaster.current.intersectObject(points, false) as AngularHit[];
     let best: number | null = null;
     let bestScore = Infinity;
-    for (let i = 0; i < catalog.count; i++) {
-      if (!project(i, v)) continue;
-      const dx = v.x - sx;
-      const dy = v.y - sy;
-      const d2 = dx * dx + dy * dy;
-      if (d2 > PICK_RADIUS_PX * PICK_RADIUS_PX * 4) continue;
-      const mag = apparentMagFromCamera(catalog.absMag[i], distanceToCamera(i));
-      if (mag > limitMag) continue;
-      const radius = PICK_RADIUS_PX + Math.max(0, limitMag - mag) * 1.5;
-      if (d2 > radius * radius) continue;
-      const score = Math.sqrt(d2) + mag * 2;
+    for (const h of hits) {
+      const score = h.pixels + apparentMagFromCamera(catalog.absMag[h.index], h.distance) * 2;
       if (score < bestScore) {
         bestScore = score;
-        best = i;
+        best = h.index;
       }
     }
     return best;

@@ -21,10 +21,13 @@ import { blackbodyRGB } from "../../data/stars";
 import type { ExoPlanet } from "../../data/catalog";
 import type { SurfaceStyle } from "../../domain/types";
 import { getBakedCustom } from "../bake";
-import { sunFragment, surfaceFragment, surfaceVertex } from "../shaders";
+import { cloudFragment, sunFragment, surfaceFragment, surfaceUniforms, surfaceVertex } from "../shaders";
+import { ATMOSPHERES, createAtmosphere, presetFromColor, type AtmospherePreset } from "../atmosphere";
 import { BODY_TEXTURES, useRealTexture } from "../realTextures";
 import { STARMAP_SOURCES } from "../Backdrop";
 import { radialGlowTexture } from "./GalaxyDisks";
+import { blackHoleFragment } from "./blackHoleShader";
+import { graphics } from "../../state/graphicsStore";
 
 /* ----------------------------------------------------------- units */
 
@@ -117,13 +120,34 @@ export function StarSphere({ radius, temperatureK, position }: { radius: number;
 const PLANET_STYLE: Record<ExoPlanet["style"], SurfaceStyle> = {
   rocky: "rocky",
   lava: "rocky",
-  ocean: "terran",
-  temperate: "terran",
+  ocean: "terran-clear",
+  temperate: "terran-clear",
   ice: "ice",
   "hot-jupiter": "banded",
   gas: "banded",
   "ice-giant": "ice",
 };
+
+/** Lighting model and atmosphere by world type (see surfaceFragment and atmosphere.ts). */
+function worldModel(p: Pick<ExoPlanet, "style" | "colorA">): { surface: Parameters<typeof surfaceUniforms>[0]; atmosphere: AtmospherePreset | null; clouds: boolean } {
+  switch (p.style) {
+    case "rocky":
+      return { surface: { bump: 2.2, airless: 1 }, atmosphere: null, clouds: false };
+    case "lava":
+      return { surface: { bump: 1.6, airless: 0.6 }, atmosphere: null, clouds: false };
+    case "ice":
+      return { surface: { bump: 1.2, airless: 0.8 }, atmosphere: null, clouds: false };
+    case "ocean":
+    case "temperate":
+      return { surface: { bump: 0.5, rough: 0.9, waterKey: 1 }, atmosphere: ATMOSPHERES.earth, clouds: true };
+    case "gas":
+      return { surface: { minnaert: 0.85 }, atmosphere: ATMOSPHERES.jupiter, clouds: false };
+    case "ice-giant":
+      return { surface: { minnaert: 0.85 }, atmosphere: ATMOSPHERES.neptune, clouds: false };
+    case "hot-jupiter":
+      return { surface: { minnaert: 0.8 }, atmosphere: presetFromColor(p.colorA, 0.3), clouds: false };
+  }
+}
 
 function emissiveFor(p: Pick<ExoPlanet, "style" | "equilibriumTempK">): Color {
   if (p.style === "lava") return new Color("#ff4a12").multiplyScalar(0.9);
@@ -159,10 +183,40 @@ export function PlanetBody({ planet, radius, lightPosition, position, spin = 0.2
         uHighlight: { value: 0 },
         uLightPos: { value: new Vector3() },
         uEmissive: { value: emissiveFor(planet) },
+        uNight: { value: null },
+        uNightGain: { value: 0 },
+        uOcean: { value: null },
+        uOceanGain: { value: 0 },
+        ...surfaceUniforms(worldModel(planet).surface),
       },
     });
   }, [gl, planet]);
   useEffect(() => () => material.dispose(), [material]);
+
+  // A cloud deck on its own layer, turning a little faster than the ground, shading it.
+  const clouds = useMemo(() => {
+    if (!worldModel(planet).clouds) return null;
+    const map = getBakedCustom(gl, `clouds:${planet.id}`, { style: "clouds", colorA: "#ffffff", colorB: "#ffffff" }, 1024).texture;
+    material.uniforms.uClouds.value = map;
+    material.uniforms.uCloudShadow.value = 0.35;
+    return new ShaderMaterial({
+      vertexShader: surfaceVertex,
+      fragmentShader: cloudFragment,
+      uniforms: { uMap: { value: map }, uLightPos: material.uniforms.uLightPos },
+      transparent: true,
+      depthWrite: false,
+    });
+  }, [gl, planet, material]);
+  useEffect(() => () => clouds?.dispose(), [clouds]);
+
+  const atmosphere = useMemo(() => {
+    const preset = worldModel(planet).atmosphere;
+    return preset ? createAtmosphere(preset) : null;
+  }, [planet]);
+  useEffect(() => () => atmosphere?.material.dispose(), [atmosphere]);
+  const cloudMesh = useRef<Mesh>(null);
+  const centre = useMemo(() => new Vector3(), []);
+  const camera = useThree((s) => s.camera);
 
   // Solar System worlds (e.g. in the size line-up) use their real surface maps.
   const real = useRealTexture(BODY_TEXTURES[planet.id]?.map);
@@ -172,13 +226,34 @@ export function PlanetBody({ planet, radius, lightPosition, position, spin = 0.2
 
   useFrame((_, delta) => {
     material.uniforms.uLightPos.value.copy(lightPosition);
-    if (mesh.current) mesh.current.rotation.y += delta * spin;
+    if (mesh.current) {
+      mesh.current.rotation.y += delta * spin;
+      mesh.current.getWorldPosition(centre);
+    }
+    if (cloudMesh.current && mesh.current) {
+      cloudMesh.current.rotation.y = mesh.current.rotation.y * 1.15;
+      // Shadows under the clouds follow the layer's offset.
+      material.uniforms.uCloudShift.value.set((mesh.current.rotation.y * 0.15) / (Math.PI * 2), 0);
+    }
+    atmosphere?.update(centre, radius, lightPosition, camera.position);
   });
 
   return (
-    <mesh ref={mesh} position={position} scale={radius} material={material} raycast={() => null}>
-      <sphereGeometry args={[1, 64, 48]} />
-    </mesh>
+    <group position={position}>
+      <mesh ref={mesh} scale={radius} material={material} raycast={() => null}>
+        <sphereGeometry args={[1, 64, 48]} />
+      </mesh>
+      {clouds && (
+        <mesh ref={cloudMesh} scale={radius * 1.008} material={clouds} renderOrder={1} raycast={() => null}>
+          <sphereGeometry args={[1, 64, 48]} />
+        </mesh>
+      )}
+      {atmosphere && (
+        <mesh scale={radius * atmosphere.scale} material={atmosphere.material} renderOrder={3} raycast={() => null}>
+          <sphereGeometry args={[1, 64, 48]} />
+        </mesh>
+      )}
+    </group>
   );
 }
 
@@ -192,137 +267,6 @@ void main() {
   vec4 wp = modelMatrix * vec4(position, 1.0);
   vWorld = wp.xyz;
   gl_Position = projectionMatrix * viewMatrix * wp;
-}
-`;
-
-/**
- * Gravitational lensing of the real star map. Each pixel's view ray is bent
- * toward the black hole by roughly 2·Rs/b (steepening near the photon sphere),
- * then used to look up the NASA sky map — so background stars smear into arcs
- * and an Einstein ring. Rays with impact parameter below the critical
- * 3√3/2 Rs fall in: that is the shadow.
- */
-const lensFragment = /* glsl */ `
-uniform sampler2D uSky;
-uniform float uSkyGain;
-uniform float uHasSky;
-uniform vec3 uCentre;
-uniform float uRs;
-uniform float uActive;
-uniform vec3 uRing;
-uniform vec3 uAxis;       // disk normal (world)
-uniform float uOuter;     // disk outer edge, Rs
-uniform float uTime;
-uniform float uLens;      // 0: no sky lensing (objects placed side by side in the size line-up)
-varying vec2 vUv;
-varying vec3 vWorld;
-
-const float OBLIQUITY = 0.40909280422;
-const float PI = 3.14159265359;
-const float INNER = 3.0;  // innermost stable circular orbit, Rs
-
-vec2 skyUv(vec3 d) {
-  vec3 ecl = vec3(d.x, -d.z, d.y);
-  float ce = cos(OBLIQUITY), se = sin(OBLIQUITY);
-  vec3 eq = vec3(ecl.x, ecl.y * ce - ecl.z * se, ecl.y * se + ecl.z * ce);
-  return vec2(fract(0.5 - atan(eq.y, eq.x) / (2.0 * PI)), 0.5 + asin(clamp(eq.z, -1.0, 1.0)) / PI);
-}
-
-// Sample the bent direction at the sharpness of the unbent sky, so the patch
-// matches the backdrop instead of falling to a blurry, blocky mip level.
-vec3 skyColour(vec3 bent, vec3 straight) {
-  vec2 uv0 = skyUv(straight);
-  vec2 alt = vec2(fract(uv0.x + 0.5), uv0.y);
-  vec2 dx = dFdx(uv0), dy = dFdy(uv0);
-  vec2 dxA = dFdx(alt), dyA = dFdy(alt);
-  if (abs(dxA.x) + abs(dyA.x) < abs(dx.x) + abs(dy.x)) { dx = dxA; dy = dyA; }
-  return textureGrad(uSky, skyUv(bent), dx, dy).rgb * uSkyGain;
-}
-
-float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
-float noise(vec2 x) {
-  vec2 i = floor(x), f = fract(x);
-  f = f * f * (3.0 - 2.0 * f);
-  return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), f.x), f.y);
-}
-
-// Emission of the disk at point h (Rs units, centred), seen along ray direction rd.
-vec4 disk(vec3 h, vec3 rd) {
-  float r = length(h);
-  if (r < INNER || r > uOuter) return vec4(0.0);
-  vec3 e1 = normalize(abs(uAxis.y) < 0.9 ? cross(uAxis, vec3(0, 1, 0)) : cross(uAxis, vec3(1, 0, 0)));
-  vec3 e2 = cross(uAxis, e1);
-  float th = atan(dot(h, e2), dot(h, e1));
-  // Keplerian shear winds the gas into long streaks; sample on a circle so the angle has no seam.
-  float swirl = th + uTime * pow(INNER / r, 1.5) * 0.9;
-  vec2 ring = vec2(cos(swirl), sin(swirl));
-  float lr = log(r);
-  float n = noise(ring * 2.5 + vec2(lr * 3.0, 0.0)) * 0.55 + noise(ring * 7.0 + vec2(0.0, lr * 9.0)) * 0.45;
-  n = mix(0.6, 1.25, n);
-  // Thin-disk temperature profile: hot white-blue inside, orange-red outside.
-  float t = (r - INNER) / (uOuter - INNER);
-  vec3 col = mix(vec3(1.0, 0.93, 0.85), vec3(1.0, 0.55, 0.2), smoothstep(0.0, 0.45, t));
-  col = mix(col, vec3(0.6, 0.16, 0.05), smoothstep(0.45, 1.0, t));
-  float flux = pow(INNER / r, 2.2) * (1.0 - 0.75 * sqrt(INNER / r)) * 4.0;
-  // Doppler beaming: gas moving toward the viewer is brighter.
-  vec3 orbit = normalize(cross(uAxis, h / r));
-  float toward = dot(orbit, -rd) * sqrt(0.5 / max(r - 1.0, 0.5));
-  flux *= pow(max(1.0 + 1.2 * toward, 0.05), 3.0);
-  float edge = smoothstep(0.0, 0.08, t) * smoothstep(1.0, 0.6, t);
-  float a = clamp(flux * edge * n * 0.9, 0.0, 1.0);
-  return vec4(col * flux * edge * n, a);
-}
-
-// First crossing of the disk plane along o + rd·s, 0 < s < sMax.
-vec4 crossDisk(vec3 o, vec3 rd, float sMax) {
-  float dn = dot(rd, uAxis);
-  if (abs(dn) < 1e-5) return vec4(0.0);
-  float s = -dot(o, uAxis) / dn;
-  if (s <= 0.0 || s > sMax) return vec4(0.0);
-  return disk(o + rd * s, rd);
-}
-
-void main() {
-  float edgeR = length(vUv - 0.5) * 2.0;
-  if (edgeR > 1.0) discard;
-
-  vec3 d = normalize(vWorld - cameraPosition);
-  vec3 o = (cameraPosition - uCentre) / uRs;          // camera, in Rs, hole at origin
-  float D = length(o);
-  vec3 c = -o / D;                                    // direction to the hole
-  // Impact parameter via |d × c| = sin θ: stays precise at the tiny angles of a
-  // distant hole (1 − cos²θ would cancel to a few float steps and look blocky).
-  vec3 dc = cross(d, c);
-  float sinT = length(dc);
-  float b = D * sinT;                                 // impact parameter, Rs
-  float sQ = D * dot(d, c);                           // distance to closest approach
-  // Closest-approach point: from the hole, perpendicular to the ray, away from it.
-  vec3 toHole = sinT > 1e-12 ? normalize(cross(dc, d)) : vec3(0.0, 1.0, 0.0);
-  vec3 q = -toHole * b;
-  float fade = 1.0 - smoothstep(0.55, 1.0, edgeR);
-
-  // Light path as two straight legs: camera -> closest approach -> bent onward.
-  vec4 front = uActive > 0.5 ? crossDisk(o, d, max(sQ, 0.0)) : vec4(0.0);
-  vec3 col = vec3(0.0);
-  float alphaOut = 1.0;
-  if (b < 2.598) {
-    col = vec3(0.0);                                  // captured: the shadow
-  } else {
-    float bend = 2.0 / (b - 1.35) * fade * uLens;
-    vec3 bent = normalize(d * cos(bend) + toHole * sin(bend));
-    vec4 back = uActive > 0.5 ? crossDisk(q, bent, uOuter * 4.0) : vec4(0.0);
-    col = back.rgb + skyColour(bent, d) * uHasSky * uLens * (1.0 - back.a);
-    // Outside the disk, blend the patch into the ordinary sky.
-    alphaOut = uLens > 0.5 ? max(1.0 - smoothstep(0.75, 1.0, edgeR), back.a) : back.a;
-  }
-  col = front.rgb + col * (1.0 - front.a);
-
-  float ring = exp(-pow((b - 2.64) / 0.05, 2.0));
-  col += uRing * ring * (uActive > 0.5 ? 0.45 : 0.5);
-  alphaOut = max(max(alphaOut, front.a), clamp(ring * 2.0, 0.0, 1.0));
-  if (alphaOut < 0.004) discard;
-  gl_FragColor = vec4(col / (1.0 + col * 0.25), alphaOut);
-  #include <colorspace_fragment>
 }
 `;
 
@@ -371,7 +315,7 @@ export function BlackHoleBody({ rs, diskOuterRs, jets, position, lensing = true 
     () =>
       new ShaderMaterial({
         vertexShader: lensVertex,
-        fragmentShader: lensFragment,
+        fragmentShader: blackHoleFragment,
         uniforms: {
           uSky: { value: null },
           uSkyGain: { value: LENS_SKY_GAIN },
@@ -384,6 +328,8 @@ export function BlackHoleBody({ rs, diskOuterRs, jets, position, lensing = true 
           uOuter: { value: Math.max(diskOuterRs, 4) },
           uTime: { value: 0 },
           uLens: { value: lensing ? 1 : 0 },
+          uSteps: { value: graphics().lensSteps },
+          uTpeak: { value: 5_400 },
         },
         transparent: true,
         depthWrite: false,
@@ -423,6 +369,7 @@ export function BlackHoleBody({ rs, diskOuterRs, jets, position, lensing = true 
     if (!group.current) return;
     group.current.getWorldPosition(shadow.uniforms.uCentre.value);
     shadow.uniforms.uTime.value = clock.elapsedTime;
+    shadow.uniforms.uSteps.value = graphics().lensSteps;
   });
 
   const jetLength = rs * 140;
@@ -431,10 +378,6 @@ export function BlackHoleBody({ rs, diskOuterRs, jets, position, lensing = true 
 
   return (
     <group ref={group} position={position}>
-      <mesh scale={rs} raycast={() => null}>
-        <sphereGeometry args={[1, 48, 32]} />
-        <meshBasicMaterial color="#000000" />
-      </mesh>
       <Billboard>
         <mesh material={shadow} renderOrder={1} raycast={() => null}>
           <planeGeometry args={[rs * lensSpan, rs * lensSpan]} />

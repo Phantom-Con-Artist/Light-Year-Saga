@@ -22,6 +22,8 @@ const STYLE_INDEX: Record<SurfaceStyle, number> = {
   banded: 3,
   ice: 4,
   star: 5,
+  clouds: 6,
+  "terran-clear": 7,
 };
 
 const quadCamera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);

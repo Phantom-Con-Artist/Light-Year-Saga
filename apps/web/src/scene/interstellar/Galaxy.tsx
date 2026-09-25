@@ -30,6 +30,7 @@ import { ScreenLabel } from "../ScreenLabel";
 import { ARMS, BAR_ANGLE, GALAXY_EXTENT_LY, ORION_SPUR, PITCH_TAN, armAngleAt, galaxyBakeFragment, generateGalaxyCloud, type PointLayer } from "./galaxyModel";
 import { galaxyOpacity, smoothstep } from "./visibility";
 import { useGraphicsStore } from "../../state/graphicsStore";
+import { createProceduralGalaxy, galaxyBudget, updateProceduralGalaxy } from "./galaxyPoints";
 
 /** Real catalogue stars cover this radius around the Sun; the model stays out of it. */
 const REAL_STAR_RADIUS_LY = 3_200;
@@ -276,7 +277,68 @@ const STRUCTURE_LABELS = [
   { name: ORION_SPUR.name, position: labelPoint(ORION_SPUR.radiusAtSun + 1_800, Math.PI - 0.12) },
 ];
 
+/** The Milky Way: GPU point clouds, or the classic baked-glow look (Settings → Point-cloud galaxies). */
 export function Galaxy() {
+  const pointClouds = useGraphicsStore((g) => g.pointClouds);
+  return (
+    <>
+      {pointClouds ? <PointCloudGalaxy /> : <ClassicGalaxy />}
+      <GalaxyLabels />
+    </>
+  );
+}
+
+/** Every star, glow, dust and gas point generated on the GPU; nothing but a byte per point in memory. */
+function PointCloudGalaxy() {
+  const camera = useThree((s) => s.camera) as PerspectiveCamera;
+  const group = useRef<Group>(null!);
+  const particles = useGraphicsStore((g) => g.galaxyParticles);
+  const withDust = useGraphicsStore((g) => g.dust);
+  const withGas = useGraphicsStore((g) => g.nebulae);
+  const galaxy = useMemo(
+    () => createProceduralGalaxy(galaxyBudget(particles, withDust, withGas), SUN_GALACTOCENTRIC, REAL_STAR_RADIUS_LY),
+    [particles, withDust, withGas],
+  );
+  useEffect(() => () => galaxy.dispose(), [galaxy]);
+  useEffect(() => {
+    group.current.matrixAutoUpdate = false;
+    group.current.matrix.copy(GALACTOCENTRIC_TO_RENDER);
+    group.current.matrixWorldNeedsUpdate = true;
+  }, []);
+
+  useFrame(({ size, gl, clock }) => {
+    const dSun = camera.position.length();
+    const dCore = camera.position.distanceTo(GALACTIC_CENTRE);
+    const g = useGraphicsStore.getState();
+    // With no glow planes to bridge the gap, the points take over as the NASA sky map fades.
+    const opacity = galaxyOpacity(dSun) * smoothstep(2_500, 9_000, dSun);
+    group.current.visible = opacity > 0.001;
+    updateProceduralGalaxy(galaxy, {
+      focal: size.height / 2 / Math.tan((camera.fov * Math.PI) / 360),
+      pixelRatio: gl.getPixelRatio(),
+      opacity,
+      exposure: 0.14 + 0.86 * smoothstep(6_000, 80_000, dCore),
+      time: clock.elapsedTime,
+      twinkle: g.twinkle ? g.twinkleStrength : 0,
+      starSize: g.starSize,
+      starBrightness: g.starBrightness,
+      unit: 1,
+      maxSprite: g.galaxyParticles >= 160_000 ? 96 : 56,
+      dust: galaxy.dust.geometry.drawRange.count > 0,
+    });
+  });
+
+  return (
+    <group ref={group}>
+      <primitive object={galaxy.glow} />
+      <primitive object={galaxy.dust} />
+      <primitive object={galaxy.gas} />
+      <primitive object={galaxy.stars} />
+    </group>
+  );
+}
+
+function ClassicGalaxy() {
   const gl = useThree((s) => s.gl);
   const camera = useThree((s) => s.camera) as PerspectiveCamera;
   const group = useRef<Group>(null!);
@@ -385,7 +447,13 @@ export function Galaxy() {
         <primitive object={cloud.gas} />
         <primitive object={cloud.stars} />
       </group>
+    </>
+  );
+}
 
+function GalaxyLabels() {
+  return (
+    <>
       {/* Labels live in render space (outside the model-matrix group) so drei projects them directly. */}
       <group>
         <GalaxyLabel position={new Vector3(0, 0, 0)} text="Sun · you are here" tone="sun" />

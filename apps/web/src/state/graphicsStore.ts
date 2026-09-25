@@ -49,6 +49,14 @@ export interface GraphicsValues {
   dust: boolean;
   /** Glowing gas clouds and star-forming regions. */
   nebulae: boolean;
+  /**
+   * Milky Way and Universe drawn entirely as GPU point clouds (stars, glow,
+   * gas and galaxies generated in the vertex shader). Off: the classic look
+   * with baked glow textures and illustrated galaxy disks.
+   */
+  pointClouds: boolean;
+  /** Ray-march steps per pixel for the black-hole close-up (light bending). */
+  lensSteps: number;
 
   showFps: boolean;
 }
@@ -77,6 +85,8 @@ export const PRESETS: Record<Tier, GraphicsValues> = {
     galaxyParticles: 30_000,
     dust: false,
     nebulae: true,
+    pointClouds: true,
+    lensSteps: 56,
     showFps: false,
   },
   medium: {
@@ -102,6 +112,8 @@ export const PRESETS: Record<Tier, GraphicsValues> = {
     galaxyParticles: 80_000,
     dust: true,
     nebulae: true,
+    pointClouds: true,
+    lensSteps: 96,
     showFps: false,
   },
   high: {
@@ -127,6 +139,8 @@ export const PRESETS: Record<Tier, GraphicsValues> = {
     galaxyParticles: 160_000,
     dust: true,
     nebulae: true,
+    pointClouds: true,
+    lensSteps: 150,
     showFps: false,
   },
   ultra: {
@@ -152,6 +166,8 @@ export const PRESETS: Record<Tier, GraphicsValues> = {
     galaxyParticles: 300_000,
     dust: true,
     nebulae: true,
+    pointClouds: true,
+    lensSteps: 220,
     showFps: false,
   },
 };

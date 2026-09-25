@@ -291,7 +291,13 @@ function Body() {
       </Section>
 
       <Section title="Galaxy">
-        <Row label="Milky Way particles" hint="Stars in the 3D model of our galaxy (Stars & Galaxy view, zoomed out)." stacked>
+        <Row
+          label="Point-cloud galaxies"
+          hint="Draw the Milky Way and the Universe entirely as GPU point clouds, generated on the graphics chip from each point's index. Off: the classic look with painted glow and galaxy disks."
+        >
+          <Toggle label="Point-cloud galaxies" on={g.pointClouds} onChange={bind("pointClouds")} />
+        </Row>
+        <Row label="Milky Way particles" hint={g.pointClouds ? "Point clouds draw 4× this many stars: they are generated on the GPU and take no memory." : "Stars in the 3D model of our galaxy (Stars & Galaxy view, zoomed out)."} stacked>
           <Segmented
             label="Milky Way particles"
             value={g.galaxyParticles}
@@ -309,6 +315,19 @@ function Body() {
         </Row>
         <Row label="Glowing gas" hint="Pink star-forming regions and blue reflection nebulae.">
           <Toggle label="Glowing gas" on={g.nebulae} onChange={bind("nebulae")} />
+        </Row>
+        <Row label="Black-hole light bending" hint="Steps per pixel when tracing light around a black hole in close-up. More steps sharpen the photon ring but cost more." stacked>
+          <Segmented
+            label="Black-hole light bending"
+            value={g.lensSteps}
+            options={[
+              [56, "Fast"],
+              [96, "Balanced"],
+              [150, "Fine"],
+              [220, "Max"],
+            ]}
+            onChange={bind("lensSteps")}
+          />
         </Row>
       </Section>
 

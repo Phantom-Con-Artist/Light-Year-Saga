@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import {
-  AdditiveBlending,
-  BackSide,
   Color,
   DataTexture,
   DoubleSide,
@@ -21,7 +19,8 @@ import { currentRate, useTimeStore } from "../state/timeStore";
 import { selectObject, useSelectionStore } from "../state/selectionStore";
 import { layerOn, useSolarStore } from "../state/solarStore";
 import { getRenderPosition, getRenderRadius, isPresent, setBodyOrientation, syncRenderPositions } from "./renderRegistry";
-import { atmosphereFragment, cloudFragment, ringFragment, ringVertex, surfaceFragment, surfaceVertex } from "./shaders";
+import { cloudFragment, ringFragment, ringVertex, surfaceFragment, surfaceUniforms, surfaceVertex } from "./shaders";
+import { ATMOSPHERES, createAtmosphere, presetFromColor } from "./atmosphere";
 import { BODY_TEXTURES, useRealTexture } from "./realTextures";
 import { getBakedSurface } from "./bake";
 import { BodyLabel } from "./BodyLabel";
@@ -29,7 +28,6 @@ import { bodyQuaternion, facingQuaternion, forwardUpQuaternion, poleFrame, prime
 import { satellitePosition } from "../astronomy/satellites";
 import { SpacecraftMesh } from "./solar/SpacecraftModels";
 
-const ATMOSPHERE_SCALE = 1.08;
 /** Visual cap on spin so fast-forwarding doesn't strobe (degrees per real second). */
 const MAX_SPIN_DEG = 50;
 const DEG = Math.PI / 180;
@@ -46,6 +44,21 @@ function flatTexture(color: string): DataTexture {
   t.colorSpace = SRGBColorSpace;
   t.needsUpdate = true;
   return t;
+}
+
+/**
+ * How a body's surface meets light: relief strength, roughness, regolith
+ * (Lommel–Seeliger) for airless worlds, limb darkening for cloud decks.
+ */
+function surfaceModel(obj: SpaceObject) {
+  const { style, atmosphere } = obj.visual;
+  if (obj.type === "star" || obj.visual.model) return {};
+  if (obj.id === "earth") return { bump: 0.6, rough: 0.9 };
+  if (obj.id === "mars") return { bump: 1.6, airless: 0.35 };
+  if (style === "banded" || style === "cloudy" || (style === "ice" && obj.type === "planet")) return { minnaert: 0.85 };
+  if (atmosphere) return { minnaert: 0.9, bump: 0.4 };
+  // Airless rock and ice: cratered regolith.
+  return { bump: obj.id === "moon" || obj.id === "mercury" ? 3 : style === "ice" ? 1.4 : 2.2, airless: 1 };
 }
 
 const wrap180 = (x: number) => ((((x + 180) % 360) + 360) % 360) - 180;
@@ -93,9 +106,10 @@ export function Body({ obj }: { obj: SpaceObject }) {
           uNightGain: { value: 0 },
           uOcean: { value: null },
           uOceanGain: { value: 0 },
+          ...surfaceUniforms(surfaceModel(obj)),
         },
       }),
-    [placeholder, visual.atmosphere],
+    [placeholder, visual.atmosphere, obj],
   );
   useEffect(() => () => surfaceMat.dispose(), [surfaceMat]);
 
@@ -122,6 +136,13 @@ export function Body({ obj }: { obj: SpaceObject }) {
     }
   }, [surfaceMat, map, night, ocean]);
 
+  // Clouds shade the ground under them.
+  useEffect(() => {
+    if (!cloudMap) return;
+    surfaceMat.uniforms.uClouds.value = cloudMap;
+    surfaceMat.uniforms.uCloudShadow.value = 0.35;
+  }, [surfaceMat, cloudMap]);
+
   const cloudMat = useMemo(
     () =>
       cloudMap
@@ -137,25 +158,12 @@ export function Body({ obj }: { obj: SpaceObject }) {
   );
   useEffect(() => () => cloudMat?.dispose(), [cloudMat]);
 
-  const atmosphereMat = useMemo(
-    () =>
-      visual.atmosphere
-        ? new ShaderMaterial({
-            vertexShader: surfaceVertex,
-            fragmentShader: atmosphereFragment,
-            uniforms: {
-              uAtmo: { value: new Color(visual.atmosphere) },
-              uLimb: { value: Math.sqrt(1 - 1 / (ATMOSPHERE_SCALE * ATMOSPHERE_SCALE)) },
-              uIntensity: { value: 1.2 },
-            },
-            side: BackSide,
-            blending: AdditiveBlending,
-            transparent: true,
-            depthWrite: false,
-          })
-        : null,
-    [visual.atmosphere],
-  );
+  // Scattering atmosphere (Rayleigh + Mie), tuned from each world's measured optical depths.
+  const atmosphere = useMemo(() => {
+    const preset = ATMOSPHERES[obj.id] ?? (visual.atmosphere ? presetFromColor(visual.atmosphere) : null);
+    return preset ? createAtmosphere(preset) : null;
+  }, [obj.id, visual.atmosphere]);
+  useEffect(() => () => atmosphere?.material.dispose(), [atmosphere]);
 
   const ringMat = useMemo(
     () =>
@@ -205,6 +213,7 @@ export function Body({ obj }: { obj: SpaceObject }) {
     }
     const pos = getRenderPosition(obj.id);
     group.current.position.copy(pos);
+    atmosphere?.update(pos, radius, ORIGIN, camera.position);
     if (ringMat) ringMat.uniforms.uPlanetCenter.value.copy(pos);
 
     // Bake the procedural surface only once someone comes close.
@@ -308,7 +317,7 @@ export function Body({ obj }: { obj: SpaceObject }) {
           <RingPlane frame={frame} ringMat={ringMat} inner={visual.rings.innerRadii * radius} outer={visual.rings.outerRadii * radius} />
         )}
       </group>
-      {atmosphereMat && <mesh scale={radius * ATMOSPHERE_SCALE} geometry={SPHERE_HI} material={atmosphereMat} renderOrder={1} raycast={() => null} />}
+      {atmosphere && <mesh scale={radius * atmosphere.scale} geometry={SPHERE_HI} material={atmosphere.material} renderOrder={3} raycast={() => null} />}
       <BodyLabel obj={obj} radius={radius} />
     </group>
   );

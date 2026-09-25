@@ -2,6 +2,7 @@ import { OBJECTS_BY_ID } from "../data/solarSystem";
 import { getFeature } from "../data/solar/features";
 import { getCatalogObject, getExoPlanet, hasCloseUp } from "../data/catalog";
 import { isStarId } from "../data/stars";
+import { isPointGalaxyId } from "../data/cosmic/cosmicPoints";
 import { isConstellationId } from "../data/constellations";
 import { selectObject } from "./selectionStore";
 import { useViewStore, type ViewLevel } from "./viewStore";
@@ -18,6 +19,7 @@ export function levelOf(id: string): ViewLevel | null {
   if (isStarId(id)) return useViewStore.getState().level === "sky" ? null : "interstellar";
   const c = getCatalogObject(id);
   if (c) return c.level;
+  if (isPointGalaxyId(id)) return "cosmic";
   if (getExoPlanet(id)) return "focus";
   return null;
 }

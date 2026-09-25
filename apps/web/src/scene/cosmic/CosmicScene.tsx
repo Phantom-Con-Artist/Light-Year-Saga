@@ -14,6 +14,7 @@ import {
   Sprite,
   SpriteMaterial,
   Vector3,
+  type PerspectiveCamera,
 } from "three";
 import { CATALOG, getCatalogObject, type CatalogObject } from "../../data/catalog";
 import { GALACTIC_ROTATION } from "../../astronomy/galactic";
@@ -27,8 +28,13 @@ import { GalaxyDisks, radialGlowTexture } from "../common/GalaxyDisks";
 import { SkyPhotos } from "../common/SkyPhotos";
 import { useScreenPicking } from "../common/picking";
 import { ScreenLabel } from "../ScreenLabel";
-import { CosmicWeb, StructureOutline } from "./CosmicWeb";
+import { StructureOutline } from "./CosmicWeb";
+import { CosmicWeb, ModelledGalaxies, PointGalaxyLabel, PointGalaxyPicking } from "./PointGalaxies";
 import { useCosmicStore } from "../../state/cosmicStore";
+import { useGraphicsStore } from "../../state/graphicsStore";
+import { GalaxyClouds } from "../common/GalaxyClouds";
+import { createProceduralGalaxy, galaxyBudget, updateProceduralGalaxy } from "../interstellar/galaxyPoints";
+import { isPointGalaxyId, pointGalaxyInfo, pointGalaxyPosition } from "../../data/cosmic/cosmicPoints";
 
 const ORIGIN = new Vector3();
 /** Opening/overview shot: far enough out to see the cosmic web of real galaxies. */
@@ -104,6 +110,42 @@ function MilkyWayDisk() {
     [mesh],
   );
   return <primitive object={mesh} />;
+}
+
+/** The Milky Way from outside, as the same GPU point cloud as the Stars & Galaxy view (at 1/10 the budget). */
+function MilkyWayPoints() {
+  const camera = useThree((s) => s.camera) as PerspectiveCamera;
+  const mw = getCatalogObject("milky-way-cosmic")!;
+  const particles = useGraphicsStore((g) => g.galaxyParticles);
+  const galaxy = useMemo(() => {
+    const b = galaxyBudget(particles, false, true);
+    return createProceduralGalaxy({ stars: Math.round(b.stars / 10), glow: Math.round(b.glow / 2), dust: 0, gas: Math.round(b.gas / 2) }, null);
+  }, [particles]);
+  useEffect(() => () => galaxy.dispose(), [galaxy]);
+  const matrix = useMemo(() => new Matrix4().makeTranslation(mw.position.x, mw.position.y, mw.position.z).multiply(GALACTIC_ROTATION).multiply(new Matrix4().makeScale(1e-6, 1e-6, 1e-6)), [mw]);
+  useFrame(({ size, gl, clock }) => {
+    const g = useGraphicsStore.getState();
+    updateProceduralGalaxy(galaxy, {
+      focal: size.height / 2 / Math.tan((camera.fov * Math.PI) / 360),
+      pixelRatio: gl.getPixelRatio(),
+      opacity: 1,
+      exposure: 1,
+      time: clock.elapsedTime,
+      twinkle: 0,
+      starSize: g.starSize,
+      starBrightness: g.starBrightness,
+      unit: 1e6,
+      maxSprite: 48,
+      glowGain: 1.3,
+    });
+  });
+  return (
+    <group matrixAutoUpdate={false} matrix={matrix}>
+      <primitive object={galaxy.glow} />
+      <primitive object={galaxy.gas} />
+      <primitive object={galaxy.stars} />
+    </group>
+  );
 }
 
 /* -------------------------------------- clusters, voids, quasars, the edge */
@@ -231,6 +273,13 @@ function Picking() {
 function Rig() {
   const home = useMemo<RigTarget>(() => ({ position: () => ORIGIN, distance: HOME_MLY, minDistance: MIN_MLY }), []);
   const resolve = useCallback((id: string): RigTarget | null => {
+    if (isPointGalaxyId(id)) {
+      const info = pointGalaxyInfo(id);
+      const p = info && pointGalaxyPosition(id);
+      if (!info || !p) return null;
+      const d = Math.max((info.diameterLy ?? 100_000) / 1e6, 0.03);
+      return { position: () => p, distance: d * 3, minDistance: d * 0.2 };
+    }
     const c = getCatalogObject(id);
     if (!c || c.level !== "cosmic") return null;
     return { position: () => c.position, distance: c.framing, direction: c.viewDirection, minDistance: Math.min(c.framing * 0.05, MIN_MLY) };
@@ -265,12 +314,16 @@ function Rig() {
  * groups, clusters and superclusters, voids, quasars and the edge.
  */
 export function CosmicScene() {
+  const pointClouds = useGraphicsStore((g) => g.pointClouds);
   return (
     <>
-      <MilkyWayDisk />
+      {pointClouds ? <MilkyWayPoints /> : <MilkyWayDisk />}
+      <ModelledGalaxies />
       <CosmicWeb />
       <StructureOutline />
-      <GalaxyDisks objects={GALAXIES} unitScale={1} />
+      {pointClouds ? <GalaxyClouds objects={GALAXIES} unitScale={1} pointSlot /> : <GalaxyDisks objects={GALAXIES} unitScale={1} />}
+      <PointGalaxyLabel />
+      <PointGalaxyPicking />
       <SkyPhotos objects={GALAXIES} mode="sky" />
       <Structures />
       <CatalogLayer objects={OTHER_OBJECTS} labelRange={labelRange} markerKinds={MARKER_KINDS} />

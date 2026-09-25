@@ -32,3 +32,16 @@ export function lookbackTimeGyr(z: number): number {
 
 /** Radius of the observable universe (comoving particle horizon), Mly. */
 export const OBSERVABLE_UNIVERSE_RADIUS_MLY = 46_500;
+
+/** Redshift at a comoving distance (Mly), by bisection. */
+export function redshiftFromComovingMly(dMly: number): number {
+  let lo = 0;
+  let hi = 30;
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2;
+    const d = (C_KMS / H0) * integrate((x) => 1 / E(x), 0, mid, 200) * MLY_PER_MPC;
+    if (d < dMly) lo = mid;
+    else hi = mid;
+  }
+  return (lo + hi) / 2;
+}

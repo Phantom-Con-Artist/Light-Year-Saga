@@ -35,7 +35,8 @@ function hint(level: "interstellar" | "cosmic", d: number, touch: boolean): stri
     return `${zoomOut} to enter the Universe view`;
   }
   if (d < 1) return `${zoomIn} on the Milky Way to return to the stars`;
-  return `Dots are ${formatNumber(COSMIC_WEB_GALAXIES, 0)} real galaxies, coloured by supercluster`;
+  if (d < 600) return `Dots are ${formatNumber(COSMIC_WEB_GALAXIES, 0)} real galaxies, coloured by supercluster`;
+  return useCosmicStore.getState().modelled ? "Real galaxies at the centre; beyond them, a modelled universe" : `Dots are ${formatNumber(COSMIC_WEB_GALAXIES, 0)} real galaxies`;
 }
 
 /** Where the camera is (interstellar / universe views). */
@@ -268,6 +269,8 @@ export function SkyHud() {
 export function CosmicHud() {
   const colorBy = useCosmicStore((s) => s.colorBySupercluster);
   const names = useCosmicStore((s) => s.structureNames);
+  const modelled = useCosmicStore((s) => s.modelled);
+  const mark = useCosmicStore((s) => s.markModelled);
   const toggle = useCosmicStore((s) => s.toggle);
   const selected = useSelectionStore((s) => s.selectedId);
   const mobile = useIsMobile();
@@ -292,6 +295,28 @@ export function CosmicHud() {
       >
         Names
       </button>
+      <button
+        type="button"
+        className={`btn ${mobile ? "!h-8 !px-2.5 !text-[12px]" : ""}`}
+        data-on={modelled}
+        aria-pressed={modelled}
+        title="Synthetic galaxies from a model of the cosmic web, filling the universe beyond the surveys"
+        onClick={() => toggle("modelled")}
+      >
+        Modelled
+      </button>
+      {modelled && (
+        <button
+          type="button"
+          className={`btn ${mobile ? "!h-8 !px-2.5 !text-[12px]" : ""}`}
+          data-on={mark}
+          aria-pressed={mark}
+          title="Draw modelled galaxies in one neutral colour"
+          onClick={() => toggle("markModelled")}
+        >
+          Mark modelled
+        </button>
+      )}
     </>
   );
 
@@ -322,6 +347,18 @@ export function CosmicHud() {
           </li>
         ))}
       </ul>
+      <div className="mt-1.5 space-y-1 border-t border-line px-1.5 pt-2 text-[12px] text-ink-dim">
+        <div className="flex items-center gap-2">
+          <span className="h-2 w-2 shrink-0 rounded-full bg-[#b9c8ff]" />
+          Real: {formatNumber(COSMIC_WEB_GALAXIES, 0)} catalogued galaxies
+        </div>
+        {modelled && (
+          <div className="flex items-center gap-2">
+            <span className="h-2 w-2 shrink-0 rounded-full border border-[#a89fc8]" />
+            Modelled: synthetic, beyond ~300 million ly
+          </div>
+        )}
+      </div>
       <div className="mt-1.5 flex flex-wrap gap-0.5 border-t border-line pt-1.5">{chips}</div>
     </div>
   );

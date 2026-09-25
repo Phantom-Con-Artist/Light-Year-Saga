@@ -13,6 +13,8 @@ import { diffuseSkyOpacity, smoothstep } from "./visibility";
 import { FlightRig, type RigTarget } from "../common/FlightRig";
 import { CatalogLayer } from "../common/CatalogLayer";
 import { GalaxyDisks } from "../common/GalaxyDisks";
+import { GalaxyClouds } from "../common/GalaxyClouds";
+import { useGraphicsStore } from "../../state/graphicsStore";
 import { SkyPhotos } from "../common/SkyPhotos";
 import { useScreenPicking } from "../common/picking";
 
@@ -91,6 +93,7 @@ function Rig({ catalog }: { catalog: StarCatalog | null }) {
  */
 export function InterstellarScene() {
   const catalog = useStarStore((s) => s.catalog);
+  const pointClouds = useGraphicsStore((g) => g.pointClouds);
 
   return (
     <>
@@ -102,7 +105,11 @@ export function InterstellarScene() {
         opacity={(camera) => diffuseSkyOpacity(camera.position.length())}
       />
       <Galaxy />
-      <GalaxyDisks objects={SATELLITES} unitScale={1e6} gain={satelliteGain} />
+      {pointClouds ? (
+        <GalaxyClouds objects={SATELLITES} unitScale={1e6} gain={satelliteGain} />
+      ) : (
+        <GalaxyDisks objects={SATELLITES} unitScale={1e6} gain={satelliteGain} />
+      )}
       <SkyPhotos objects={SATELLITES} unitScale={1e6} mode="sky" gain={satelliteGain} />
       <SkyPhotos objects={NEBULAE} mode="billboard" />
       {catalog && (

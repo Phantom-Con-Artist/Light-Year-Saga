@@ -22,6 +22,8 @@
  * Output:
  *   apps/web/public/data/cosmic-web.bin   Float32 × 6 per galaxy: x, y, z (Mly, render axes),
  *                                         T-type, structure index (−1 none), supercluster index (−1 none)
+ *   apps/web/public/data/cosmic-web-meta.json     per-galaxy identifiers, same order as the .bin:
+ *                                         PGC numbers for the 2MRS rows, then UNGC names for the nearby ones
  *   apps/web/src/data/catalog/structures.gen.ts   named structures (bundled: search, list, inspector)
  */
 import fs from "node:fs";
@@ -157,7 +159,7 @@ for (const r of tully) {
   const ra = Number(r["_RA.icrs"]);
   const dec = Number(r["_DE.icrs"]);
   const p = toRender(ra, dec, dMly);
-  galaxies.push({ p, t: Number(r.MType), nest: Number(r.Nest) });
+  galaxies.push({ p, t: Number(r.MType), nest: Number(r.Nest), pgc: Number(r.PGC) });
   let n = nests.get(Number(r.Nest));
   if (!n) {
     n = {
@@ -287,7 +289,7 @@ for (const r of ungc) {
   if (!Number.isFinite(dMly) || dMly > NEARBY_MLY || r.Name === "Milky Way") continue;
   const p = toRender(sexa(r.RAJ2000, true), sexa(r.DEJ2000, false), dMly);
   const g = nearbyGroup(r);
-  galaxies.push({ p, t: Number(r.TT), nearby: g });
+  galaxies.push({ p, t: Number(r.TT), nearby: g, name: r.Name });
   if (g) nearbyMembers.get(g).push({ name: r.Name, p });
 }
 for (const [id, name] of NEARBY_GROUPS) {
@@ -340,6 +342,12 @@ galaxies.forEach((g, i) => {
   floats.set([g.p[0], g.p[1], g.p[2], Number.isFinite(g.t) ? g.t : 3, structure, sup], i * 6);
 });
 fs.writeFileSync(path.resolve("apps/web/public/data/cosmic-web.bin"), Buffer.from(floats.buffer));
+const pgcRows = galaxies.filter((g) => g.pgc !== undefined);
+if (galaxies.slice(0, pgcRows.length).some((g) => g.pgc === undefined)) throw new Error("2MRS rows must come first");
+fs.writeFileSync(
+  path.resolve("apps/web/public/data/cosmic-web-meta.json"),
+  JSON.stringify({ pgc: pgcRows.map((g) => g.pgc), names: galaxies.slice(pgcRows.length).map((g) => g.name) }),
+);
 
 fs.writeFileSync(
   path.resolve("apps/web/src/data/catalog/structures.gen.ts"),
